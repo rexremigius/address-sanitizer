@@ -1,29 +1,35 @@
-# README #
+# ADDRESS SANITIZER #
 
-This README would normally document whatever steps are necessary to get your application up and running.
+This README is to know what the project is all about.
 
-### What is this repository for? ###
+### About this Repository ###
 
-* Quick summary
-* Version
-* [Learn Markdown](https://bitbucket.org/tutorials/markdowndemo)
+* This project works on the Address Sanitizer which is a memory bug detector tool used in LLVM.
+* Till now Address Sanitizer is used to find memory bugs or memory leaks from a program and gets Aborted.
+* We are working to make Address Sanitizer reporting the error and continue its execution to make the system Fault Tolerant and available throughout. 
 
-### How do I get set up? ###
+### Set Up ###
 
-* Summary of set up
-* Configuration
-* Dependencies
-* Database configuration
-* How to run tests
-* Deployment instructions
+* This project is a LLVM out-of-tree build.
 
-### Contribution guidelines ###
+* This project can be run by just cloning this repo to your Local machine.
 
-* Writing tests
-* Code review
-* Other guidelines
+* Move to the Testing folder and execute the following commands.
 
-### Who do I talk to? ###
+* To run the program with Address Sanitizer we need to enable a flag using clang.
 
-* Repo owner or admin
-* Other community or team contact
+    clang -S -emit-llvm Xclang -disable-O0-optnone -fsanitize=address -fno-omit-frame-pointer <test_file>.c -o <test_file>.ll
+
+* Then we need to pass the LLVM IR to the opt to run the pass on it
+
+    opt -load-pass-plugin LLVMAddressSan.so -passes="addressSan" -S <test_file>.ll -o <output_file>.ll
+
+* The output will be given as LLVM IR and it can be made into an executable by
+
+    clang <output_file>.ll -o <executable> -lasan
+
+* This executable can be executed as
+
+    ./<executable>
+
+### MulticoreWare Confidential ###
