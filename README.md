@@ -18,18 +18,26 @@ This README is to know what the project is all about.
 
 * To run the program with Address Sanitizer we need to enable a flag using clang.
 
-    clang -S -emit-llvm Xclang -disable-O0-optnone -fsanitize=address -fno-omit-frame-pointer <test_file>.c -o <test_file>.ll
+
+        clang -S -emit-llvm Xclang -disable-O0-optnone -fsanitize=address -fno-omit-frame-pointer <test_file>.c -o <test_file>.ll
+
 
 * Then we need to pass the LLVM IR to the opt to run the pass on it
 
-    opt -load-pass-plugin LLVMAddressSan.so -passes="addressSan" -S <test_file>.ll -o <output_file>.ll
+
+        opt -load-pass-plugin LLVMAddressSan.so -passes="addressSan" -S <test_file>.ll -o <output_file>.ll
+
 
 * The output will be given as LLVM IR and it can be made into an executable by
 
-    clang <output_file>.ll -o <executable> -lasan
+
+        clang <output_file>.ll -o <executable> -lasan
+
 
 * This executable can be executed as
 
-    ./<executable>
+
+        ./<executable>
+
 
 ### MulticoreWare Confidential ###
