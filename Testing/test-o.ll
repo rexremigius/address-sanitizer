@@ -1,4 +1,4 @@
-; ModuleID = 'test.c'
+; ModuleID = 'test.ll'
 source_filename = "test.c"
 target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-f80:128-n8:16:32:64-S128"
 target triple = "x86_64-unknown-linux-gnu"
@@ -40,43 +40,49 @@ entry:
   %11 = add i64 %10, 3
   %12 = trunc i64 %11 to i8
   %13 = icmp sge i8 %12, %7
-  br i1 %13, label %14, label %15
+  br i1 %13, label %16, label %15
 
-14:                                               ; preds = %9
+14:                                               ; No predecessors!
   call void @__asan_report_store4(i64 %3) #7
   unreachable
 
 15:                                               ; preds = %9, %entry
   store i32 20, i32* %arrayidx, align 4
-  %16 = load i32*, i32** %x, align 8
-  %arrayidx1 = getelementptr inbounds i32, i32* %16, i64 11
-  %17 = ptrtoint i32* %arrayidx1 to i64
-  %18 = lshr i64 %17, 3
-  %19 = add i64 %18, 2147450880
-  %20 = inttoptr i64 %19 to i8*
-  %21 = load i8, i8* %20, align 1
-  %22 = icmp ne i8 %21, 0
-  br i1 %22, label %23, label %29, !prof !6
+  br label %16
 
-23:                                               ; preds = %15
-  %24 = and i64 %17, 7
-  %25 = add i64 %24, 3
-  %26 = trunc i64 %25 to i8
-  %27 = icmp sge i8 %26, %21
-  br i1 %27, label %28, label %29
+16:                                               ; preds = %9, %15
+  %17 = load i32*, i32** %x, align 8
+  %arrayidx1 = getelementptr inbounds i32, i32* %17, i64 11
+  %18 = ptrtoint i32* %arrayidx1 to i64
+  %19 = lshr i64 %18, 3
+  %20 = add i64 %19, 2147450880
+  %21 = inttoptr i64 %20 to i8*
+  %22 = load i8, i8* %21, align 1
+  %23 = icmp ne i8 %22, 0
+  br i1 %23, label %24, label %30, !prof !6
 
-28:                                               ; preds = %23
-  call void @__asan_report_load4(i64 %17) #7
+24:                                               ; preds = %16
+  %25 = and i64 %18, 7
+  %26 = add i64 %25, 3
+  %27 = trunc i64 %26 to i8
+  %28 = icmp sge i8 %27, %22
+  br i1 %28, label %32, label %30
+
+29:                                               ; No predecessors!
+  call void @__asan_report_load4(i64 %18) #7
   unreachable
 
-29:                                               ; preds = %23, %15
-  %30 = load i32, i32* %arrayidx1, align 4
-  %call2 = call i32 (i8*, ...) @printf(i8* noundef getelementptr inbounds ({ [4 x i8], [28 x i8] }, { [4 x i8], [28 x i8] }* @.str, i32 0, i32 0, i64 0), i32 noundef %30)
-  %31 = load i32*, i32** %x, align 8
-  %32 = bitcast i32* %31 to i8*
-  call void @free(i8* noundef %32) #6
-  %33 = bitcast i32** %x to i8*
-  call void @llvm.lifetime.end.p0i8(i64 8, i8* %33) #6
+30:                                               ; preds = %24, %16
+  %31 = load i32, i32* %arrayidx1, align 4
+  %call2 = call i32 (i8*, ...) @printf(i8* noundef getelementptr inbounds ({ [4 x i8], [28 x i8] }, { [4 x i8], [28 x i8] }* @.str, i32 0, i32 0, i64 0), i32 noundef %31)
+  br label %32
+
+32:                                               ; preds = %24, %30
+  %33 = load i32*, i32** %x, align 8
+  %34 = bitcast i32* %33 to i8*
+  call void @free(i8* noundef %34) #6
+  %35 = bitcast i32** %x to i8*
+  call void @llvm.lifetime.end.p0i8(i64 8, i8* %35) #6
   ret i32 0
 }
 

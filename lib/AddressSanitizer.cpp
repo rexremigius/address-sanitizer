@@ -6,51 +6,60 @@
 #include <vector>
 using namespace std;
 using namespace llvm;
+bool isUsedByInstruction(Instruction *inst1, Instruction *inst2) {
+  for (Use &use : inst1->operands()) {
+    if (use.get() == inst2) {
+      return true;
+    }
+  }
+  return false;
+}
 PreservedAnalyses AddressSanPass::run(Function &F,FunctionAnalysisManager &FAM) 
 {
-    string funcName = F.getName().str();
-    vector<Instruction *> instructions;
-    if (funcName.find("main") != string::npos) {
-        errs()<< "==================Address Sanitizer======================\n";
-        for (Function::iterator bb = F.begin(), e = F.end(); bb != e; bb++) {
-            for (BasicBlock::iterator i = bb->begin(), i2 = bb->end(); i != i2; i++) {
-                auto *inst = dyn_cast<Instruction>(i);
-                // errs() << *inst << "\n";
-                if (isa<CallInst>(inst)) {
-                    auto *callInstr = dyn_cast<CallInst>(inst);
-                    errs() << "Call Instructions :" << *inst << "\n";
-                    string asanCall = callInstr->getCalledFunction()->getName().str();
-                    errs() << asanCall << "\n";
-                    if (asanCall.find("__asan_report_") != string::npos) {
-                        instructions.push_back(callInstr);
-                        auto *next = inst->getNextNode();
-                        instructions.push_back(next);
-                        auto *prevBB = bb->getPrevNode();
-                        if (prevBB != nullptr) {
-                            errs() << "Previous BB : " << *prevBB << "\n";
-                            auto *lastInst = prevBB->getTerminator();
-                            errs() << *lastInst << "\n";
-
-                            if (lastInst) {
-                                BasicBlock *target = lastInst->getSuccessor(1);
-                                IRBuilder<> builder(callInstr);
-                                Instruction *BrInst = builder.CreateBr(target);
-                                errs() << *BrInst << "\n";
-                                lastInst->replaceAllUsesWith(BrInst);
-                            }
-                        }else {
-                            errs() << "No Previous BB "<< "\n";
+  for(auto &BB:F)
+    {
+        for(auto &inst:BB)
+        {
+            errs()<<inst<<"\n";
+            if(isa<CallInst>(inst))
+            {
+                errs()<<"call instruction\n";
+                auto *callInst=dyn_cast<CallInst>(&inst);
+                string call_inst=callInst->getCalledFunction()->getName().str();
+                if(call_inst.find("__asan_report_")!=string::npos)
+                {
+                    errs()<<"asan call ......\n";
+                    auto *illegal=dyn_cast<Instruction>(callInst->getOperand(0));
+                    auto *memory_access=dyn_cast<Instruction>(illegal->getOperand(0));
+                    auto *prevBB = BB.getPrevNode();
+                    auto *lastInst = prevBB->getTerminator();
+                    errs()<<*lastInst<<"\n";
+                    BasicBlock *nextBB = lastInst->getSuccessor(1);
+                    Instruction* initial = nextBB->getFirstNonPHI();
+                    Instruction* instToSplit=initial->getNextNode();
+                    if(initial->getOpcode()==Instruction::Load)
+                    {
+                    for (BasicBlock::iterator i = ++nextBB->begin(), i2 = nextBB->end(); i != i2; i++) 
+                    {
+                     auto *in = dyn_cast<Instruction>(i);
+                    
+                        if(isUsedByInstruction(in,initial))
+                        {
+                            instToSplit=in->getNextNode();
+                            continue;
                         }
+                        break;
                     }
+                    }
+                    BasicBlock* newBlock = nextBB->splitBasicBlock(instToSplit);
+                   errs()<<*newBlock->getSinglePredecessor()<<" "<<*newBlock<<"\n";
+                   lastInst->setOperand(2,newBlock);
+                    
+                    
                 }
+
             }
         }
-    }
-    for (auto *instr : instructions) {
-        errs() << "Deleted Instructions : " << *instr << "\n";
-    }
-    for (auto *instr : instructions) {
-        instr->eraseFromParent();
     }
     return PreservedAnalyses::all();
 }
