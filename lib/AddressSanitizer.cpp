@@ -31,14 +31,25 @@ PreservedAnalyses AddressSanPass::run(Function &F,FunctionAnalysisManager &FAM)
                 if(call_inst.find("__asan_report_")!=string::npos)
                 {
                     errs()<<"asan call ......\n";
-                    auto *illegal=dyn_cast<Instruction>(callInst->getOperand(0));
-                    auto *memory_access=dyn_cast<Instruction>(illegal->getOperand(0));
+                    // auto *illegal=dyn_cast<Instruction>(callInst->getOperand(0));
+                    // auto *memory_access=dyn_cast<Instruction>(illegal->getOperand(0));
+
+                    //to access previous block
                     auto *prevBB = BB.getPrevNode();
+
+                    //to get last instruction of previous block
                     auto *lastInst = prevBB->getTerminator();
-                    errs()<<*lastInst<<"\n";
+                    
+                    //to get basic block where target instruction is present
                     BasicBlock *nextBB = lastInst->getSuccessor(1);
+
+                    //first instruction of of next basic block
                     Instruction* initial = nextBB->getFirstNonPHI();
+
+                    //target instruction where spliting take place
                     Instruction* instToSplit=initial->getNextNode();
+
+                    //in case intial instruction is load instruction , check from second instruction to end of basic block whether instruction is depend on initial instruction
                     if(initial->getOpcode()==Instruction::Load)
                     {
                     for (BasicBlock::iterator i = ++nextBB->begin(), i2 = nextBB->end(); i != i2; i++) 
@@ -53,8 +64,12 @@ PreservedAnalyses AddressSanPass::run(Function &F,FunctionAnalysisManager &FAM)
                         break;
                     }
                     }
+
+                    //target basic block
                     BasicBlock* newBlock = nextBB->splitBasicBlock(instToSplit);
                    errs()<<*newBlock->getSinglePredecessor()<<" "<<*newBlock<<"\n";
+
+                   //change cfg to bypass to target basic block
                    lastInst->setOperand(2,newBlock);
                     
                     
