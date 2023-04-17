@@ -31,7 +31,7 @@ PreservedAnalyses AddressSanPass::run(Function &F,FunctionAnalysisManager &FAM)
                 if(call_inst.find("__asan_report_")!=string::npos)
                 {
                     errs()<<"asan call ......\n";
-                    // auto *illegal=dyn_cast<Instruction>(callInst->getOperand(0));
+                    // auto *illegal=dyn_cast<Instruction>(callInst->getOperand(0));Stack dump:
                     // auto *memory_access=dyn_cast<Instruction>(illegal->getOperand(0));
 
                     //to access previous block
@@ -69,8 +69,12 @@ PreservedAnalyses AddressSanPass::run(Function &F,FunctionAnalysisManager &FAM)
                     BasicBlock* newBlock = nextBB->splitBasicBlock(instToSplit);
                    errs()<<*newBlock->getSinglePredecessor()<<" "<<*newBlock<<"\n";
 
-                   //change cfg to bypass to target basic block
-                   lastInst->setOperand(2,newBlock);
+                   //change cfg to bypass to target basic 
+                   IRBuilder<> Builder(&BB);
+                    BB.getInstList().pop_back();
+                    Builder.SetInsertPoint(&BB);
+                    Builder.CreateBr(newBlock);
+                  //  lastInst->setOperand(2,newBlock);
                     
                     
                 }
