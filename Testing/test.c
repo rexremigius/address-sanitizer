@@ -5,5 +5,6 @@ int main() {
 	x[11]=20;
 	printf("%d\n",x[11]);
 	free(x);
+	printf("Hello McW\n");	
 	return 0;
 }

@@ -71,10 +71,10 @@ PreservedAnalyses AddressSanPass::run(Function &F,FunctionAnalysisManager &FAM)
 
                     //target basic block
                     BasicBlock* newBlock = nextBB->splitBasicBlock(instToSplit);
-                   errs()<<*newBlock->getSinglePredecessor()<<" "<<*newBlock<<"\n";
+                    errs()<<*newBlock->getSinglePredecessor()<<" "<<*newBlock<<"\n";
 
                    //change cfg to bypass to target basic 
-                   IRBuilder<> Builder(&BB);
+                    IRBuilder<> Builder(&BB);
                     BB.getInstList().pop_back();
                     Builder.SetInsertPoint(&BB);
                     Builder.CreateBr(newBlock);
@@ -88,4 +88,5 @@ PreservedAnalyses AddressSanPass::run(Function &F,FunctionAnalysisManager &FAM)
     }
   }
     return PreservedAnalyses::all();
+    
 }
