@@ -50,4 +50,9 @@ Thumbs.db
 
 .vscode
 
+#Build folder
 build
+
+#LLVM related files
+*.dot
+*.ll

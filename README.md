@@ -69,7 +69,9 @@ This README is to know what the project is all about.
 * The output will be given as LLVM IR and it can be made into an executable by
 
 
-        clang <output_file>.ll -o <executable> -lasan
+        llc -filetype=obj <output_file>.ll -o <output>.o
+
+        clang -g -fsanitize=address <output>.o -o <executable>
 
 
 

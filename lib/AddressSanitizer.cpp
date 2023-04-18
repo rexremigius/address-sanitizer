@@ -18,6 +18,10 @@ bool isUsedByInstruction(Instruction *inst1, Instruction *inst2) {
 
 PreservedAnalyses AddressSanPass::run(Function &F,FunctionAnalysisManager &FAM) 
 {
+  string funcName = F.getName().str();
+  vector<Instruction *> instructions;
+  if (!(funcName.find("asan") != string::npos)) 
+  {
   for(auto &BB:F)
     {
         for(auto &inst:BB)
@@ -25,12 +29,12 @@ PreservedAnalyses AddressSanPass::run(Function &F,FunctionAnalysisManager &FAM)
             errs()<<inst<<"\n";
             if(isa<CallInst>(inst))
             {
-                errs()<<"call instruction\n";
+               // errs()<<"call instruction\n";
                 auto *callInst=dyn_cast<CallInst>(&inst);
                 string call_inst=callInst->getCalledFunction()->getName().str();
                 if(call_inst.find("__asan_report_")!=string::npos)
                 {
-                    errs()<<"asan call ......\n";
+                   // errs()<<"asan call ......\n";
                     // auto *illegal=dyn_cast<Instruction>(callInst->getOperand(0));Stack dump:
                     // auto *memory_access=dyn_cast<Instruction>(illegal->getOperand(0));
 
@@ -82,5 +86,6 @@ PreservedAnalyses AddressSanPass::run(Function &F,FunctionAnalysisManager &FAM)
             }
         }
     }
+  }
     return PreservedAnalyses::all();
 }
