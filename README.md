@@ -2,13 +2,13 @@
 
 This README is to know what the project is all about.
 
-### About this Repository ###
+## ABOUT THIS REPOSITORY ##
 
 * This project works on the Address Sanitizer which is a memory bug detector tool used in LLVM.
 * Till now Address Sanitizer is used to find memory bugs or memory leaks from a program and gets Aborted.
 * We are working to make Address Sanitizer reporting the error and continue its execution to make the system Fault Tolerant and available throughout. 
 
-### Repositry Structure ###
+## REPOSITORY STRUCTURE ##
 
         
         /compiler-rt
@@ -42,7 +42,7 @@ This README is to know what the project is all about.
         
 
 
-### Set Up ###
+## SETUP ##
 
 * This project is a LLVM out-of-tree build.
 
@@ -50,7 +50,7 @@ This README is to know what the project is all about.
 
 * Note that LLVM should be installed before to run this code.
 
-* ## STEPS TO BUILD LLVM ##
+#### STEPS TO BUILD LLVM ####
 
 * Download the LLVM source file from LLVM website - https://releases.llvm.org/ or https://github.com/llvm/llvm-project/releases
 
@@ -112,7 +112,7 @@ This README is to know what the project is all about.
         ninja
 
 
-## SET UP BUILD FOLDER ##
+#### SET UP BUILD FOLDER ####
 
 * To set up build folder run the following commands 
 
@@ -187,4 +187,4 @@ This README is to know what the project is all about.
 
 * CFG's can be viewed as Graphs in this method for better understanding of control flow
 
-#### MulticoreWare Confidential ####
+# MulticoreWare Confidential #
