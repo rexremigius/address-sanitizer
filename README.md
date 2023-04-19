@@ -167,4 +167,24 @@ This README is to know what the project is all about.
         error.log.$(pid)
 
 
+* To create CFG for the files we can use the below commands
+
+
+        opt -dot-cfg <filename>.ll
+
+
+* CFG's will be created in the function name such as
+
+        .<functionname>.dot
+
+
+* To view the CFG use need to have xdot or graphviz viewer
+* If xdot is present we can use the command,
+
+
+        xdot .<functionname>.dot
+
+
+* CFG's can be viewed as Graphs in this method for better understanding of control flow
+
 #### MulticoreWare Confidential ####
