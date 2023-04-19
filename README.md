@@ -11,6 +11,11 @@ This README is to know what the project is all about.
 ### Repositry Structure ###
 
         
+        /compiler-rt
+          /lib
+             /asan
+                - asan_report.cpp
+
         /include
           - AddressSanitizer.h
 
@@ -18,6 +23,11 @@ This README is to know what the project is all about.
           - AddressSanitizer.cpp
           - AddressSanitizerPlugin.cpp
           - CMakeLists.txt
+
+        /llvm
+          /lib
+            /Passes
+               -StandardInstrumentations.cpp
 
         /Testing
           - test.c
@@ -38,7 +48,73 @@ This README is to know what the project is all about.
 
 * This project can be run by just cloning this repo to your Local machine.
 
-* To set up build folder run the following commands (Note that LLVM should be installed before to run this code)
+* Note that LLVM should be installed before to run this code.
+
+* ## STEPS TO BUILD LLVM ##
+
+* Download the LLVM source file from LLVM website - https://releases.llvm.org/ or https://github.com/llvm/llvm-project/releases
+
+* Download the Source code (tar.gz) for Linux.
+
+* Unzip it using the following commands
+
+
+        tar -xf <llvm_filename>.tar.gz
+
+
+* Use the following command to build llvm with clang,compiler-rt etc and build the 
+
+
+        cmake -G Ninja -B build -DLLVM_ENABLE_PROJECTS="clang;lld;compiler-rt" -DCMAKE_BUILD_TYPE=Debug -DLLVM_ENABLE_ASSERTIONS=ON  -DLLVM_OPTIMIZED_TABLEGEN=ON -DBUILD_SHARED_LIBS=ON -DLLVM_TARGETS_TO_BUILD=X86 ../llvm
+
+        cd ..
+
+        cd build
+
+
+* Using ninja to build the llvm and $(nproc) to use all the cores of the cpu. Note we can also use less number of cores too.
+
+
+        ninja -j$(nproc)
+
+
+* Once the build is complete we need to setup the environmental variables in order to use the llvm libraries and files.
+
+
+        vim ~/.bashrc
+
+        export PATH=PATH:~/<path/to/llvm/build/folder>/build/bin
+
+        sudo vim /etc/ld.so.conf.d/<llvm_filename>.conf
+
+        home/<username>/<path/to/llvm/build/folder>/build/lib
+
+        source ~/.bashrc
+
+        sudo ldconfig
+
+
+* First we need to replace some of the existing files in the llvm source tree
+
+
+        compiler-rt -> lib -> asan -> asan_report.cpp
+
+   * Replace the above file with the file we have in this repository under the same folder structure.
+
+
+        llvm -> lib -> Passes -> StandardInstrumentations.cpp
+
+   * Replace the above file with the file we have in this repository under the same folder structure.
+
+* Again build the llvm using the command
+
+
+        ninja
+
+
+## SET UP BUILD FOLDER ##
+
+* To set up build folder run the following commands 
 
 
         LLVM_INSTALL_DIR= <LLVM PATH TO SOURCE>/build/
@@ -73,6 +149,10 @@ This README is to know what the project is all about.
 
         clang -g -fsanitize=address <output>.o -o <executable>
 
+* To log the report we can use the following command to enable log file
+
+
+        export ASAN_OPTIONS=log_path=error.log
 
 
 * This executable can be executed as
@@ -81,4 +161,10 @@ This README is to know what the project is all about.
         ./<executable>
 
 
-### MulticoreWare Confidential ###
+* Log file will be created in the Testing folder as
+
+
+        error.log.$(pid)
+
+
+#### MulticoreWare Confidential ####
