@@ -53,3 +53,7 @@ build
 #LLVM related files
 *.dot
 *.o
+*.png
+*.ll
+error.log.*
+out

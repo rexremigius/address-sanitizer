@@ -29,6 +29,9 @@ This README is to know what the project is all about.
             /Passes
                -StandardInstrumentations.cpp
 
+        /scripts
+           -run.sh
+
         /Testing
           - test.c
           - test.ll
@@ -187,4 +190,17 @@ This README is to know what the project is all about.
 
 * CFG's can be viewed as Graphs in this method for better understanding of control flow
 
-# MulticoreWare Confidential #
+#### RUNNING PROJECT USING SCRIPT FILE ####
+
+* We have enabled execution of passes using script file.
+* Change the if need to update respective file location 
+
+* Use the following command to run the script file
+
+
+        chmod +x run.sh
+
+        ./run.sh
+        
+        
+# MULTICOREWARE CONFIDENTIAL #

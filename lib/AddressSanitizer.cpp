@@ -37,16 +37,25 @@ PreservedAnalyses AddressSanPass::run(Function &F,FunctionAnalysisManager &FAM)
                    // errs()<<"asan call ......\n";
                     // auto *illegal=dyn_cast<Instruction>(callInst->getOperand(0));Stack dump:
                     // auto *memory_access=dyn_cast<Instruction>(illegal->getOperand(0));
-
+                    auto *next = callInst->getNextNode();
+                    instructions.push_back(next);
                     //to access previous block
                     auto *prevBB = BB.getPrevNode();
-
+                    if (prevBB != nullptr) {
+                    errs() << "Previous BB : " << *prevBB << "\n";
                     //to get last instruction of previous block
                     auto *lastInst = prevBB->getTerminator();
-                    
+                    errs() << *lastInst << "\n";
+                      if (lastInst) {
+                        BasicBlock *target = lastInst->getSuccessor(1);
+                        IRBuilder<> builder(next);
+                        Instruction *BrInst = builder.CreateBr(target);
+                      errs() << *BrInst << "\n";
+                        lastInst->replaceAllUsesWith(BrInst);
+                      }
+                    } 
                     //to get basic block where target instruction is present
-                    BasicBlock *nextBB = lastInst->getSuccessor(1);
-
+                    /*
                     //first instruction of of next basic block
                     Instruction* initial = nextBB->getFirstNonPHI();
 
@@ -72,13 +81,7 @@ PreservedAnalyses AddressSanPass::run(Function &F,FunctionAnalysisManager &FAM)
                     //target basic block
                     BasicBlock* newBlock = nextBB->splitBasicBlock(instToSplit);
                     errs()<<*newBlock->getSinglePredecessor()<<" "<<*newBlock<<"\n";
-
-                   //change cfg to bypass to target basic 
-                    IRBuilder<> Builder(&BB);
-                    BB.getInstList().pop_back();
-                    Builder.SetInsertPoint(&BB);
-                    Builder.CreateBr(newBlock);
-                  //  lastInst->setOperand(2,newBlock);
+*/
                     
                     
                 }
@@ -86,6 +89,9 @@ PreservedAnalyses AddressSanPass::run(Function &F,FunctionAnalysisManager &FAM)
             }
         }
     }
+  }
+  for(auto *i : instructions){
+    i->eraseFromParent();
   }
     return PreservedAnalyses::all();
     
