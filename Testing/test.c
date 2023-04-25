@@ -3,7 +3,8 @@
 int main() {
 	int *x=(int*)calloc(10,sizeof(int)) ;
 	x[11]=20;
-	printf("%d\n",x[11]);
+	x[6]=12;
+	printf("%d\n",(x[6]+x[11]));
 	free(x);
 	printf("Hello McW\n");	
 	return 0;

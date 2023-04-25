@@ -6,109 +6,209 @@
 #include <vector>
 using namespace std;
 using namespace llvm;
-/*
-bool isUsedByInstruction(Instruction *inst1, Instruction *inst2) {
-  for (Use &use : inst1->operands()) {
-    if (use.get() == inst2) {
-      return true;
-    }
-  }
-  return false;
-}
-*/
 PreservedAnalyses AddressSanPass::run(Function &F,
                                       FunctionAnalysisManager &FAM) {
+  
+  //  To get the function name to avoid asan invoked functions
+
   string funcName = F.getName().str();
+
+  // To create LLVMContext for the function
+
   LLVMContext &Ctx = F.getContext();
-  int initial_size;
+
+  //  integer values for reallocation of the values - required Index and initial
+  //  size which are used to get the reallocation size reallocated size is
+  //  determined as (required_index+initial_size)*sizeof(int_64);
+
+  int64_t required_index = 0;
+  int64_t initial_size = 0;
+  int reallocated_size = 0;
+
+  //  Vector to push the unwanted instruction and delete it at end.
 
   vector<Instruction *> instructions;
+
+  //  this condition does not allow functions related to asan
+
   if (!(funcName.find("asan") != string::npos)) {
+
+    //  iterating over the functions
+
     for (Function::iterator bb = F.begin(), e = F.end(); bb != e; bb++) {
+
+      //  iterating over the basic blocks
+
       for (BasicBlock::iterator i = bb->begin(), i2 = bb->end(); i != i2; i++) {
+
+        // dynamically casting the iterator to instructions
+
         auto *inst = dyn_cast<Instruction>(i);
         errs() << *inst << "\n";
+
+        //  To get the array
+
         Value *arr;
+
+        //  To check whether the instruction is a array index access instruction
+        //  and get the required index
+
+        if (isa<GetElementPtrInst>(inst)) {
+          auto *req_index = inst->getOperand(1);
+          required_index = cast<ConstantInt>(req_index)->getSExtValue();
+          errs() << "Required Index : " << required_index << "\n";
+        }
+
+        //  To check whether the instruction is a allocation instruction to get
+        //  the array declaration
+
         if (isa<AllocaInst>(inst)) {
           if (inst->getNameOrAsOperand().find("retval") == string::npos) {
             arr = inst;
-            errs() << " alloc : " << *arr << "\n";
           }
         }
+
+        //  To check whether the instruction is a call instruction and get the
+        //  initial index from the calloc call and also check for the
+        //  asan_report and perform the reallocation instrumentation
+
         if (isa<CallInst>(inst)) {
-          // errs()<<"call instruction\n";
           auto *callInst = dyn_cast<CallInst>(inst);
           string call_inst = callInst->getCalledFunction()->getName().str();
           if (call_inst.find("calloc") != string::npos) {
-            errs() << " Calloc : " << *callInst << "\n";
-            errs()<<*(callInst->getArgOperand(0))<<"\n";
+            auto *initial_index = callInst->getOperand(0);
+            initial_size = cast<ConstantInt>(initial_index)->getSExtValue();
+            errs() << "Initial Index : " << initial_size << "\n";
           }
+
+          //  To check whether it is a asan_report
+
           if (call_inst.find("__asan_report_") != string::npos) {
 
-            // auto
-            // *illegal=dyn_cast<Instruction>(callInst->getOperand(0));Stack
-            // dump: auto
-            // *memory_access=dyn_cast<Instruction>(illegal->getOperand(0));
-            
             auto *next = callInst->getNextNode();
-            
+
             // Memory reallocation instrumentation code.
             IRBuilder<> builder(next);
-            Type *fromTy = Type::getInt32PtrTy(Ctx);
-            Value *loadInst = builder.CreateLoad(fromTy,arr);
-            Type *toTy = Type::getInt8PtrTy(Ctx);
-            auto *bitinst32To8 = builder.CreateBitCast(loadInst,toTy);
-            auto *bitinst8To32 = builder.CreateBitCast(bitinst32To8,fromTy);
-            auto *storeInst = builder.CreateStore(bitinst8To32,arr);
+            Type *int32Ty = Type::getInt32PtrTy(Ctx);
+            Value *loadInst = builder.CreateLoad(int32Ty, arr);
 
+            //  get the int 8 pointer type
+
+            Type *int8Ty = Type::getInt8PtrTy(Ctx);
+
+            //  Bitcasting from 32 bits to 8 bits
+
+            auto *bitinst32To8 = builder.CreateBitCast(loadInst, int8Ty);
+
+            //  To create a call instruction for the reallocation process
+            //  In this we are creating a call function which is a reallocation
+            //  so that we can call the realloc function whenever needed We are
+            //  first declaring the function so that there is no problem when
+            //  calling the function.
+
+            Module *M = F.getParent();
+            FunctionType *funcType = FunctionType::get(
+                Type::getInt8PtrTy(Ctx),
+                {Type::getInt8PtrTy(Ctx), Type::getInt64Ty(Ctx)},
+                false);
+            Function *func = Function::Create(
+                funcType, Function::ExternalLinkage, "realloc", M);
+
+            //  Here functioncallee is used to call the function in the create
+            //  call function
+
+            FunctionCallee reallocFunc = M->getFunction("realloc");
+            errs()  << "Intial Size : " << initial_size
+                    << "\tRequired Index : " << required_index << "\n";
+
+            //  Here is the process of reallocation of array and it is converted
+            //  into a Constant for the createcall function
+
+            reallocated_size =
+                (initial_size + required_index) * sizeof(int64_t);
+            Constant *newSize =
+                ConstantInt::get(Type::getInt64Ty(Ctx), reallocated_size);
+
+            //  Here the create call function is used to call the reallocation
+            //  function and point it to the pointer with the new size for the
+            //  array and bitcasting it to the 32 bits from 8 bits.
+
+            auto *reallocCall =
+                builder.CreateCall(reallocFunc, {bitinst32To8, newSize});
+            auto *bitinst8To32 = builder.CreateBitCast(reallocCall, int32Ty);
+
+            //  The bit casted value is stored and the unreachable statement is
+            //  pushed into the vector.
+
+            auto *storeInst = builder.CreateStore(bitinst8To32, arr);
             instructions.push_back(next);
 
-            // to access previous block
+            //  To access previous block and get the terminator and create a
+            //  break statement to the next basic block
+
             auto *prevBB = bb->getPrevNode();
             if (prevBB != nullptr) {
               auto *lastInst = prevBB->getTerminator();
               if (lastInst) {
+
+                //  Get the 1st successor of the previous block and add it to
+                //  the break statement
+
                 BasicBlock *target = lastInst->getSuccessor(1);
                 IRBuilder<> builder(next);
                 Instruction *BrInst = builder.CreateBr(target);
                 lastInst->replaceAllUsesWith(BrInst);
               }
             }
-            // to get basic block where target instruction is present
-            /*
-            //first instruction of of next basic block
-            Instruction* initial = nextBB->getFirstNonPHI();
 
-            //target instruction where spliting take place
-            Instruction* instToSplit=initial->getNextNode();
+            //  To access the next basic block
 
-            //in case intial instruction is load instruction , check from second
-            instruction to end of basic block whether instruction is depend on
-            initial instruction if(initial->getOpcode()==Instruction::Load)
-            {
-            for (BasicBlock::iterator i = ++nextBB->begin(), i2 = nextBB->end();
-            i != i2; i++)
-            {
-             auto *in = dyn_cast<Instruction>(i);
+            auto *nextBB = bb->getNextNode();
 
-                if(isUsedByInstruction(in,initial))
-                {
-                    instToSplit=in->getNextNode();
-                    continue;
-                }
-                break;
+            //  To get the first instruction of the basic block
+
+            Instruction *firstInst = &(*nextBB->getFirstInsertionPt());
+
+            //  Set the first instruction as the insert point for the
+            //  instructions
+
+            builder.SetInsertPoint(firstInst);
+
+            if (nextBB != nullptr) {
+
+              //  Create the load instruction to load the array with reallocated
+              //  size
+
+              auto *loadInst = builder.CreateLoad(int32Ty, arr);
+
+              // Convert the required index from int to ConstantInt
+
+              auto *Idx =
+                  ConstantInt::get(Type::getInt32Ty(Ctx), required_index);
+
+              //  Get Element Pointer instruction is created to access the
+              //  required index of the array with reallocated size
+
+              auto *GEP =
+                  builder.CreateGEP(Type::getInt32Ty(Ctx), loadInst, Idx);
+
+              //  To check whether the next instruction is store and set the
+              //  operand to the newly created GEP.
+
+              auto *storeInst = loadInst->getNextNode()->getNextNode();
+              if (isa<StoreInst>(storeInst)) {
+                storeInst->setOperand(1, GEP);
+              }
             }
-            }
-
-            //target basic block
-            BasicBlock* newBlock = nextBB->splitBasicBlock(instToSplit);
-            errs()<<*newBlock->getSinglePredecessor()<<" "<<*newBlock<<"\n";
-*/
           }
         }
       }
     }
   }
+
+  //  To delete the unwanted/unused instruction from the IR which is stored in
+  //  vector.
+
   for (auto *i : instructions) {
     i->eraseFromParent();
   }
