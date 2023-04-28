@@ -56,4 +56,4 @@ build
 *.png
 *.ll
 error.log.*
-out
+sample

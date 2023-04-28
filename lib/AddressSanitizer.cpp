@@ -8,7 +8,7 @@ using namespace std;
 using namespace llvm;
 PreservedAnalyses AddressSanPass::run(Function &F,
                                       FunctionAnalysisManager &FAM) {
-  
+
   //  To get the function name to avoid asan invoked functions
 
   string funcName = F.getName().str();
@@ -19,13 +19,18 @@ PreservedAnalyses AddressSanPass::run(Function &F,
 
   //  integer values for reallocation of the values - required Index and initial
   //  size which are used to get the reallocation size reallocated size is
-  //  determined as (required_index+initial_size)*sizeof(int_64);
+  //  determined as (required_index+initial_size)*sizeof(dataType);
+  //  Declared the variables required for the pass
 
+  Module *M = F.getParent();
+  Type *type_ptr;
+  Type *type;
   int64_t required_index = 0;
   int64_t initial_size = 0;
   int64_t data_type_size = 4;
-  int reallocated_size = 0;
+  int64_t reallocated_size = 0;
   string allocation;
+
   //  Vector to push the unwanted instruction and delete it at end.
 
   vector<Instruction *> instructions;
@@ -52,12 +57,13 @@ PreservedAnalyses AddressSanPass::run(Function &F,
         Value *arr;
 
         //  To check whether the instruction is a array index access instruction
-        //  and get the required index
+        //  and get the required index and get the type of the input.
 
         if (isa<GetElementPtrInst>(inst)) {
           auto *req_index = inst->getOperand(1);
+          auto *typePtr = inst->getType();
+          type = typePtr->getPointerElementType();
           required_index = cast<ConstantInt>(req_index)->getSExtValue();
-          // errs() << "Required Index : " << required_index << "\n";
         }
 
         //  To check whether the instruction is a allocation instruction to get
@@ -66,29 +72,50 @@ PreservedAnalyses AddressSanPass::run(Function &F,
         if (isa<AllocaInst>(inst)) {
           if (inst->getNameOrAsOperand().find("retval") == string::npos) {
             arr = inst;
+            errs() << "Instruction : " << *inst << "\n";
           }
         }
 
         //  To check whether the instruction is a call instruction and get the
         //  initial index from the calloc call and also check for the
         //  asan_report and perform the reallocation instrumentation
+        //  Check whether the dynamic allocation is malloc or calloc
 
         if (isa<CallInst>(inst)) {
           auto *callInst = dyn_cast<CallInst>(inst);
           string call_inst = callInst->getCalledFunction()->getName().str();
-          if ((call_inst.find("calloc") != string::npos) ) {
+          if ((call_inst.find("calloc") != string::npos)) {
             auto *initial_index = callInst->getOperand(0);
             initial_size = cast<ConstantInt>(initial_index)->getSExtValue();
             auto *dataTypeSize = callInst->getOperand(1);
             data_type_size = cast<ConstantInt>(dataTypeSize)->getSExtValue();
-            // errs() << "Data Type Size : " << data_type_size << "\n";
             allocation = call_inst;
-          }
-          else if(call_inst.find("malloc") != string::npos){
+
+            //  Checks whether the instruction is bitcast and gets the type pointer
+            //  which the destination type for further ref
+            //  If not then the pointer is the return type of the instruction
+
+            if (isa<BitCastInst>(inst->getNextNode())) {
+              BitCastInst *bitcastInst = dyn_cast<BitCastInst>(inst->getNextNode());
+              type_ptr = bitcastInst->getDestTy();
+            } 
+            else {
+              type_ptr = inst->getType();
+            }
+          } 
+          else if (call_inst.find("malloc") != string::npos) {
             auto *initial_index = callInst->getOperand(0);
             initial_size = cast<ConstantInt>(initial_index)->getSExtValue();
             allocation = call_inst;
+            if (isa<BitCastInst>(inst->getNextNode())) {
+              BitCastInst *bitcastInst = dyn_cast<BitCastInst>(inst->getNextNode());
+              type_ptr = bitcastInst->getDestTy();
+            } 
+            else {
+              type_ptr = inst->getType();
+            }
           }
+          
           //  To check whether it is a asan_report
 
           if (call_inst.find("__asan_report_") != string::npos) {
@@ -96,17 +123,17 @@ PreservedAnalyses AddressSanPass::run(Function &F,
             auto *next = callInst->getNextNode();
 
             // Memory reallocation instrumentation code.
-            IRBuilder<> builder(next);
-            Type *int32Ty = Type::getInt32PtrTy(Ctx);
-            Value *loadInst = builder.CreateLoad(int32Ty, arr);
 
-            //  get the int 8 pointer type
+            IRBuilder<> builder(next);
+            Value *loadInst = builder.CreateLoad(type_ptr, arr);
+
+            //  get the int 8 pointer type_ptr
 
             Type *int8Ty = Type::getInt8PtrTy(Ctx);
 
             //  Bitcasting from 32 bits to 8 bits
 
-            auto *bitinst32To8 = builder.CreateBitCast(loadInst, int8Ty);
+            auto *bitinstDestTo8 = builder.CreateBitCast(loadInst, int8Ty);
 
             //  To create a call instruction for the reallocation process
             //  In this we are creating a call function which is a reallocation
@@ -114,11 +141,9 @@ PreservedAnalyses AddressSanPass::run(Function &F,
             //  first declaring the function so that there is no problem when
             //  calling the function.
 
-            Module *M = F.getParent();
             FunctionType *funcType = FunctionType::get(
                 Type::getInt8PtrTy(Ctx),
-                {Type::getInt8PtrTy(Ctx), Type::getInt64Ty(Ctx)},
-                false);
+                {Type::getInt8PtrTy(Ctx), Type::getInt64Ty(Ctx)}, false);
             Function *func = Function::Create(
                 funcType, Function::ExternalLinkage, "realloc", M);
 
@@ -126,30 +151,33 @@ PreservedAnalyses AddressSanPass::run(Function &F,
             //  call function
 
             FunctionCallee reallocFunc = M->getFunction("realloc");
+
             // errs()  << "Intial Size : " << initial_size
             //         << "\tRequired Index : " << required_index << "\n";
 
             //  Here is the process of reallocation of array and it is converted
             //  into a Constant for the createcall function
-            if(allocation=="calloc")
-              reallocated_size =(initial_size + required_index) * data_type_size;
-            else if(allocation=="malloc")
-              reallocated_size =initial_size * required_index;
-            Constant *newSize =
-                ConstantInt::get(Type::getInt64Ty(Ctx), reallocated_size);
+
+            if (allocation == "calloc") {
+              reallocated_size =
+                  (initial_size + required_index) * data_type_size;
+            } else if (allocation == "malloc") {
+              reallocated_size = initial_size * required_index;
+            }
+            Constant *newSize = ConstantInt::get(Type::getInt64Ty(Ctx), reallocated_size);
 
             //  Here the create call function is used to call the reallocation
             //  function and point it to the pointer with the new size for the
             //  array and bitcasting it to the 32 bits from 8 bits.
 
             auto *reallocCall =
-                builder.CreateCall(reallocFunc, {bitinst32To8, newSize});
-            auto *bitinst8To32 = builder.CreateBitCast(reallocCall, int32Ty);
+                builder.CreateCall(reallocFunc, {bitinstDestTo8, newSize});
+            auto *bitinst8ToDest = builder.CreateBitCast(reallocCall, type_ptr);
 
             //  The bit casted value is stored and the unreachable statement is
             //  pushed into the vector.
 
-            auto *storeInst = builder.CreateStore(bitinst8To32, arr);
+            auto *storeInst = builder.CreateStore(bitinst8ToDest, arr);
             instructions.push_back(next);
 
             //  To access previous block and get the terminator and create a
@@ -188,18 +216,17 @@ PreservedAnalyses AddressSanPass::run(Function &F,
               //  Create the load instruction to load the array with reallocated
               //  size
 
-              auto *loadInst = builder.CreateLoad(int32Ty, arr);
-
+              auto *loadInst = builder.CreateLoad(type_ptr, arr);
+              
               // Convert the required index from int to ConstantInt
 
               auto *Idx =
-                  ConstantInt::get(Type::getInt32Ty(Ctx), required_index);
+                  ConstantInt::get(Type::getInt64Ty(Ctx), required_index);
 
               //  Get Element Pointer instruction is created to access the
               //  required index of the array with reallocated size
 
-              auto *GEP =
-                  builder.CreateGEP(Type::getInt32Ty(Ctx), loadInst, Idx);
+              auto *GEP = builder.CreateGEP(type, loadInst, Idx);
 
               //  To check whether the next instruction is store and set the
               //  operand to the newly created GEP.
