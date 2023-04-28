@@ -23,8 +23,9 @@ PreservedAnalyses AddressSanPass::run(Function &F,
 
   int64_t required_index = 0;
   int64_t initial_size = 0;
+  int64_t data_type_size = 4;
   int reallocated_size = 0;
-
+  string allocation;
   //  Vector to push the unwanted instruction and delete it at end.
 
   vector<Instruction *> instructions;
@@ -56,7 +57,7 @@ PreservedAnalyses AddressSanPass::run(Function &F,
         if (isa<GetElementPtrInst>(inst)) {
           auto *req_index = inst->getOperand(1);
           required_index = cast<ConstantInt>(req_index)->getSExtValue();
-          errs() << "Required Index : " << required_index << "\n";
+          // errs() << "Required Index : " << required_index << "\n";
         }
 
         //  To check whether the instruction is a allocation instruction to get
@@ -75,12 +76,19 @@ PreservedAnalyses AddressSanPass::run(Function &F,
         if (isa<CallInst>(inst)) {
           auto *callInst = dyn_cast<CallInst>(inst);
           string call_inst = callInst->getCalledFunction()->getName().str();
-          if (call_inst.find("calloc") != string::npos) {
+          if ((call_inst.find("calloc") != string::npos) ) {
             auto *initial_index = callInst->getOperand(0);
             initial_size = cast<ConstantInt>(initial_index)->getSExtValue();
-            errs() << "Initial Index : " << initial_size << "\n";
+            auto *dataTypeSize = callInst->getOperand(1);
+            data_type_size = cast<ConstantInt>(dataTypeSize)->getSExtValue();
+            // errs() << "Data Type Size : " << data_type_size << "\n";
+            allocation = call_inst;
           }
-
+          else if(call_inst.find("malloc") != string::npos){
+            auto *initial_index = callInst->getOperand(0);
+            initial_size = cast<ConstantInt>(initial_index)->getSExtValue();
+            allocation = call_inst;
+          }
           //  To check whether it is a asan_report
 
           if (call_inst.find("__asan_report_") != string::npos) {
@@ -118,14 +126,15 @@ PreservedAnalyses AddressSanPass::run(Function &F,
             //  call function
 
             FunctionCallee reallocFunc = M->getFunction("realloc");
-            errs()  << "Intial Size : " << initial_size
-                    << "\tRequired Index : " << required_index << "\n";
+            // errs()  << "Intial Size : " << initial_size
+            //         << "\tRequired Index : " << required_index << "\n";
 
             //  Here is the process of reallocation of array and it is converted
             //  into a Constant for the createcall function
-
-            reallocated_size =
-                (initial_size + required_index) * sizeof(int64_t);
+            if(allocation=="calloc")
+              reallocated_size =(initial_size + required_index) * data_type_size;
+            else if(allocation=="malloc")
+              reallocated_size =initial_size * required_index;
             Constant *newSize =
                 ConstantInt::get(Type::getInt64Ty(Ctx), reallocated_size);
 
