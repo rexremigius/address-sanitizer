@@ -1,18 +1,20 @@
 #include<stdio.h>
 #include <stdlib.h>
-int a=50;
+int a=25;
 int main() {
     //int x[10];
 	//int *x=(int*)calloc(sizeof(x),sizeof(int)) ;
     double *x=malloc(10*sizeof(double)) ;
     float *y=malloc(100*sizeof(float));
     // scanf("%d",&a);
+    a=50;
+   // int b=50;
     //char *x = calloc(10,sizeof(char));
     //int x[10][20];
     //x[1][30]=25;
     //memcpy(x,x,sizeof(x));
-    scanf("%lf\n",&x[50]);
-    scanf("%lf",&x[150]);
+    scanf("%lf\n",&x[a]);
+    scanf("%lf",&x[50]);
     //x[11]=20.12;
     //x[11]='a';
 	//x[6]=12;

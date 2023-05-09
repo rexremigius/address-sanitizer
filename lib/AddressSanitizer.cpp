@@ -70,9 +70,17 @@ PreservedAnalyses AddressSanPass::run(Function &F,
             errs() << "idxprom : " << *idxprom << "\n";
             auto *index = dyn_cast<Instruction>(idxprom)->getOperand(0);
             errs() << "index : " << *index << "\n";
-            auto *require_index =dyn_cast<GetElementPtrInst>(index);
-            auto* gepInst = dyn_cast<GetElementPtrInst>(require_index->getPointerOperand());
-            errs() << "GEP Instruction : " << *gepInst << "\n";
+              //auto *require_index =dyn_cast<Instruction>(index);
+            // auto* gepInst = dyn_cast<GetElementPtrInst>(require_index->getPointerOperand());
+              auto *constantExp=dyn_cast<ConstantExpr>(index);
+              if(isa<GlobalVariable>(constantExp->getOperand(0))){
+              GlobalVariable *gVar = dyn_cast<GlobalVariable>(constantExp->getOperand(0));
+              errs() << "GEP Instruction : " << *gVar << "\n";
+              errs()<<"Operand Value : "<<gVar->getNumOperands()<<"\n";
+              }
+              else{
+                
+              }
           } else {
             required_index = cast<ConstantInt>(req_index)->getSExtValue();
           }
