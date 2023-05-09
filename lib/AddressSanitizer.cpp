@@ -3,6 +3,7 @@
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Value.h"
+#include <map>
 #include <vector>
 using namespace std;
 using namespace llvm;
@@ -26,12 +27,11 @@ PreservedAnalyses AddressSanPass::run(Function &F,
   Type *type_ptr;
   Type *type;
   int64_t required_index = 0;
-  int64_t initial_size = 0;
-  int64_t data_type_size = 4;
+  int64_t data_type_size = 0;
   int64_t reallocated_size = 0;
-  string allocation;
   //  Vector to push the unwanted instruction and delete it at end.
-
+  map<string, int64_t> initialSize;
+  map<string, string> allocationType;
   vector<Instruction *> instructions;
 
   //  this condition does not allow functions related to asan
@@ -61,31 +61,6 @@ PreservedAnalyses AddressSanPass::run(Function &F,
         //  To check whether the instruction is a array index access instruction
         //  and get the required index and get the type of the input.
 
-        if (isa<GetElementPtrInst>(inst)) {
-          auto *req_index = inst->getOperand(1);
-          // auto *typePtr = inst->getType();
-          // type = typePtr->getPointerElementType();
-          if (req_index->getName().str().find("idxprom") != string::npos) {
-            auto *idxprom = dyn_cast<Instruction>(req_index)->getOperand(0);
-            errs() << "idxprom : " << *idxprom << "\n";
-            auto *index = dyn_cast<Instruction>(idxprom)->getOperand(0);
-            errs() << "index : " << *index << "\n";
-              //auto *require_index =dyn_cast<Instruction>(index);
-            // auto* gepInst = dyn_cast<GetElementPtrInst>(require_index->getPointerOperand());
-              auto *constantExp=dyn_cast<ConstantExpr>(index);
-              if(isa<GlobalVariable>(constantExp->getOperand(0))){
-              GlobalVariable *gVar = dyn_cast<GlobalVariable>(constantExp->getOperand(0));
-              errs() << "GEP Instruction : " << *gVar << "\n";
-              errs()<<"Operand Value : "<<gVar->getNumOperands()<<"\n";
-              }
-              else{
-                
-              }
-          } else {
-            required_index = cast<ConstantInt>(req_index)->getSExtValue();
-          }
-        }
-
         //  To check whether the instruction is a allocation instruction to get
         //  the array declaration
         // std::string instStr;
@@ -110,11 +85,21 @@ PreservedAnalyses AddressSanPass::run(Function &F,
           string call_inst = callInst->getCalledFunction()->getName().str();
           if ((call_inst.find("calloc") != string::npos)) {
             auto *initial_index = callInst->getOperand(0);
-            initial_size = cast<ConstantInt>(initial_index)->getSExtValue();
+            int64_t initial_size =
+                cast<ConstantInt>(initial_index)->getSExtValue();
             auto *dataTypeSize = callInst->getOperand(1);
             data_type_size = cast<ConstantInt>(dataTypeSize)->getSExtValue();
-            allocation = call_inst;
-
+            string allocation = call_inst;
+            string arrName;
+            if (isa<BitCastInst>(callInst->getPrevNode()->getPrevNode())) {
+              arrName = (callInst->getPrevNode()->getPrevNode())
+                            ->getOperand(0)
+                            ->getName()
+                            .str();
+              errs() << "Arr Name : " << arrName << "\n";
+              initialSize.insert(make_pair(arrName, initial_size));
+              allocationType.insert(make_pair(arrName, allocation));
+            }
             //  Checks whether the instruction is bitcast and gets the type
             //  pointer which the destination type for further ref If not then
             //  the pointer is the return type of the instruction
@@ -128,18 +113,84 @@ PreservedAnalyses AddressSanPass::run(Function &F,
             }
           } else if (call_inst.find("malloc") != string::npos) {
             auto *initial_index = callInst->getOperand(0);
-            initial_size = cast<ConstantInt>(initial_index)->getSExtValue();
-            allocation = call_inst;
+            int64_t initial_size =
+                cast<ConstantInt>(initial_index)->getSExtValue();
+            string allocation = call_inst;
+            string arrName;
+            if (isa<BitCastInst>(callInst->getPrevNode()->getPrevNode())) {
+              arrName = (callInst->getPrevNode()->getPrevNode())
+                            ->getOperand(0)
+                            ->getName()
+                            .str();
+              errs() << "Arr Name : " << arrName << "\n";
+              initialSize.insert(make_pair(arrName, initial_size));
+              allocationType.insert(make_pair(arrName, allocation));
+            }
           }
 
           //  To check whether it is a asan_report
-          if (call_inst.find("__asan_report_") != string::npos) 
-          {
-          
+          if (call_inst.find("__asan_report_") != string::npos) {
+            int64_t initial_size;
+            string allocation;
             auto *ptrInst = dyn_cast<Instruction>(callInst->getArgOperand(0));
+            errs() << "PtrInst : " << *ptrInst << "\n";
             auto *arrIdx = dyn_cast<Instruction>(ptrInst->getOperand(0));
+            errs() << "arrIdx : " << *arrIdx << "\n";
+            auto *arrIdxLoad = dyn_cast<Instruction>(arrIdx->getOperand(0));
+            auto *arrNameReq = arrIdxLoad->getOperand(0);
+            string nameReq = arrNameReq->getName().str();
+            for (auto i = initialSize.begin(); i != initialSize.end(); i++) {
+              string namePre = i->first;
+              if (nameReq == namePre) {
+                initial_size = i->second;
+              }
+            }
+            for (auto i = allocationType.begin(); i != allocationType.end();i++) {
+              string namePre = i->first;
+              if (nameReq == namePre) {
+                allocation = i->second;
+              }
+            }
+            errs() << "Arr Idx Name : " << *arrNameReq << "\n";
+            if (isa<GetElementPtrInst>(arrIdx)) {
+              auto *req_index = arrIdx->getOperand(1);
+              // auto *typePtr = inst->getType();
+              // type = typePtr->getPointerElementType();
+              if (req_index->getName().str().find("idxprom") != string::npos) {
+                auto *idxprom = dyn_cast<Instruction>(req_index)->getOperand(0);
+                errs() << "idxprom : " << *idxprom << "\n";
+                auto *index = dyn_cast<Instruction>(idxprom)->getOperand(0);
+                errs() << "index : " << *index << "\n";
+                // auto *require_index =dyn_cast<Instruction>(index);
+                // auto* gepInst =
+                // dyn_cast<GetElementPtrInst>(require_index->getPointerOperand());
+                auto *constantExp = dyn_cast<ConstantExpr>(index);
+                if (isa<GlobalVariable>(constantExp->getOperand(0))) {
+                  GlobalVariable *gVar =
+                      dyn_cast<GlobalVariable>(constantExp->getOperand(0));
+                  errs() << "GEP Instruction : " << *gVar << "\n";
+                  errs() << "Operand Value : " << gVar->getNumOperands()
+                         << "\n";
+                  if (!(gVar->isDeclaration())) {
+                    errs() << "Declaration : " << *(gVar->getOperand(0))
+                           << "\n";
+                    ConstantStruct *cs =
+                        dyn_cast<ConstantStruct>(gVar->getInitializer());
+                    ConstantInt *ci = dyn_cast<ConstantInt>(cs->getOperand(0));
+                    required_index = ci->getSExtValue();
+                    errs() << "Required Index : " << required_index << "\n";
+                  } else {
+                  }
+                } else {
+                }
+              } else {
+                required_index = cast<ConstantInt>(req_index)->getSExtValue();
+              }
+            }
             auto *gep = dyn_cast<Instruction>(arrIdx->getOperand(0));
+            errs() << "gep : " << *gep << "\n";
             auto *arrReq = dyn_cast<Instruction>(gep->getOperand(0));
+            errs() << "arrReq : " << *arrReq << "\n";
             type_ptr = gep->getType();
             type = type_ptr->getPointerElementType();
             errs() << "Arr Req : " << *arrReq << "\n";
@@ -184,16 +235,21 @@ PreservedAnalyses AddressSanPass::run(Function &F,
 
             //  Here is the process of reallocation of array and it is
             //  converted into a Constant for the createcall function
-            errs()<<"Require Index : "<<required_index<<"\n";
+            errs() << "Require Index : " << required_index << "\n";
             if (allocation == "calloc") {
-              reallocated_size =(initial_size + required_index) * data_type_size;
+              reallocated_size =
+                  (initial_size + required_index) * data_type_size;
+              errs() << "Calloc Size : " << reallocated_size << "\n";
+              errs() << "Initial Size : \n" << initial_size;
             } else if (allocation == "malloc") {
               reallocated_size = initial_size * required_index;
+              errs() << "Initial Size : " << initial_size << "\n"
+                     << " Malloc Size : " << reallocated_size << "\n";
             }
-            errs()<<"Reallocated Size : "<<reallocated_size<<"\n";
+            errs() << "Reallocated Size : " << reallocated_size << "\n";
             Constant *newSize =
                 ConstantInt::get(Type::getInt64Ty(Ctx), reallocated_size);
-            errs()<<"new Size : "<<*newSize<<"\n";
+            errs() << "new Size : " << *newSize << "\n";
             //  Here the create call function is used to call the reallocation
             //  function and point it to the pointer with the new size for the
             //  array and bitcasting it to the 32 bits from 8 bits.
