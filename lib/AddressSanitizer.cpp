@@ -165,25 +165,95 @@ PreservedAnalyses AddressSanPass::run(Function &F,
                 // auto* gepInst =
                 // dyn_cast<GetElementPtrInst>(require_index->getPointerOperand());
                 auto *constantExp = dyn_cast<ConstantExpr>(index);
-                if (isa<GlobalVariable>(constantExp->getOperand(0))) {
+
+                if(constantExp && isa<GlobalVariable>(constantExp->getOperand(0))){
+                
                   GlobalVariable *gVar =
                       dyn_cast<GlobalVariable>(constantExp->getOperand(0));
                   errs() << "GEP Instruction : " << *gVar << "\n";
                   errs() << "Operand Value : " << gVar->getNumOperands()
                          << "\n";
-                  if (!(gVar->isDeclaration())) {
-                    errs() << "Declaration : " << *(gVar->getOperand(0))
-                           << "\n";
-                    ConstantStruct *cs =
-                        dyn_cast<ConstantStruct>(gVar->getInitializer());
-                    ConstantInt *ci = dyn_cast<ConstantInt>(cs->getOperand(0));
-                    required_index = ci->getSExtValue();
-                    errs() << "Required Index : " << required_index << "\n";
-                  } else {
+                  ConstantStruct* constantStruct = dyn_cast<ConstantStruct>(gVar->getInitializer());
+                  // errs()<<*constantStruct<<"\n";
+                  if(constantStruct)
+                  {
+                    ConstantInt* value = dyn_cast<ConstantInt>(constantStruct->getOperand(0));
+                    APInt intValue = value->getValue();
+                    required_index = intValue.getSExtValue();
                   }
-                } else {
+                  else
+                  {
+                    int flag=0;
+                     for (Function::iterator bb = F.begin(), e = F.end(); bb != e; bb++) 
+                     {
+
+                     for (BasicBlock::iterator i = bb->begin(), i2 = bb->end(); i != i2; i++) 
+                     {
+                      auto *ins = dyn_cast<Instruction>(i);
+                     
+                      if(ins==inst)
+                      { flag=1;
+                        errs()<<"equal...\n";
+                        break;
+                      }
+                      if(isa<StoreInst>(ins))
+                      {
+                        errs()<<*ins<<*ins->getOperand(0)<<*ins->getOperand(1)<<"\n";
+                        if(ins->getOperand(1)==index)
+                        {
+                          ConstantInt* value = dyn_cast<ConstantInt>(ins->getOperand(0));
+                          APInt intValue = value->getValue();
+                          required_index = intValue.getSExtValue();
+                          
+                          
+                        }
+                      }
+                     }
+                     if(flag==1)
+                     {
+                      break;
+                     }
+                     }
+                  }
+
+                
                 }
-              } else {
+                else{
+                    int flag=0;
+                     for (Function::iterator bb = F.begin(), e = F.end(); bb != e; bb++) 
+                     {
+
+                     for (BasicBlock::iterator i = bb->begin(), i2 = bb->end(); i != i2; i++) 
+                     {
+                      auto *ins = dyn_cast<Instruction>(i);
+                      
+                      if(ins==inst)
+                      { flag=1;
+                        errs()<<"equal...\n";
+                        break;
+                      }
+                      if(isa<StoreInst>(ins))
+                      {
+                        errs()<<*ins<<*ins->getOperand(0)<<*ins->getOperand(1)<<"\n";
+                        if(ins->getOperand(1)==index)
+                        {
+                          ConstantInt* value = dyn_cast<ConstantInt>(ins->getOperand(0));
+                          APInt intValue = value->getValue();
+                          required_index = intValue.getSExtValue();
+                          
+                          
+                        }
+                      }
+                     }
+                     if(flag==1){
+                      break;
+                     }
+                     }
+                }
+                
+              
+              } 
+              else {
                 required_index = cast<ConstantInt>(req_index)->getSExtValue();
               }
             }
