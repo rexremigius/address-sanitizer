@@ -29,9 +29,14 @@ PreservedAnalyses AddressSanPass::run(Function &F,
   int64_t required_index = 0;
   int64_t data_type_size = 0;
   int64_t reallocated_size = 0;
-  //  Vector to push the unwanted instruction and delete it at end.
+
+  // Map for selecting the initial size and allocation type
+
   map<string, int64_t> initialSize;
   map<string, string> allocationType;
+
+  //  Vector to push the unwanted instruction and delete it at end.
+
   vector<Instruction *> instructions;
 
   //  this condition does not allow functions related to asan
@@ -61,20 +66,6 @@ PreservedAnalyses AddressSanPass::run(Function &F,
         //  To check whether the instruction is a array index access instruction
         //  and get the required index and get the type of the input.
 
-        //  To check whether the instruction is a allocation instruction to get
-        //  the array declaration
-        // std::string instStr;
-        // if (isa<AllocaInst>(inst)) {
-        //   raw_string_ostream rso(instStr);
-        //   inst->print(rso);
-        //   StringRef instStringRef = rso.str();
-        //   std::string myString = instStringRef.str();
-        //   if (myString.find("*") != string::npos) {
-        //     errs() << "Array Allocation : " << *inst << "\n";
-        //     string arrName = inst->getNameOrAsOperand();
-        //     arrSet.insert(make_pair(arrName, inst));
-        //   }
-        // }
         //  To check whether the instruction is a call instruction and get the
         //  initial index from the calloc call and also check for the
         //  asan_report and perform the reallocation instrumentation
@@ -89,8 +80,10 @@ PreservedAnalyses AddressSanPass::run(Function &F,
                 cast<ConstantInt>(initial_index)->getSExtValue();
             auto *dataTypeSize = callInst->getOperand(1);
             data_type_size = cast<ConstantInt>(dataTypeSize)->getSExtValue();
+
             string allocation = call_inst;
             string arrName;
+
             if (isa<BitCastInst>(callInst->getPrevNode()->getPrevNode())) {
               arrName = (callInst->getPrevNode()->getPrevNode())
                             ->getOperand(0)
@@ -100,6 +93,7 @@ PreservedAnalyses AddressSanPass::run(Function &F,
               initialSize.insert(make_pair(arrName, initial_size));
               allocationType.insert(make_pair(arrName, allocation));
             }
+
             //  Checks whether the instruction is bitcast and gets the type
             //  pointer which the destination type for further ref If not then
             //  the pointer is the return type of the instruction
@@ -129,9 +123,13 @@ PreservedAnalyses AddressSanPass::run(Function &F,
           }
 
           //  To check whether it is a asan_report
+
           if (call_inst.find("__asan_report_") != string::npos) {
+            bool idxprom = false;
+            Value *index;
             int64_t initial_size;
             string allocation;
+            Value *loadedValue;
             auto *ptrInst = dyn_cast<Instruction>(callInst->getArgOperand(0));
             errs() << "PtrInst : " << *ptrInst << "\n";
             auto *arrIdx = dyn_cast<Instruction>(ptrInst->getOperand(0));
@@ -145,7 +143,8 @@ PreservedAnalyses AddressSanPass::run(Function &F,
                 initial_size = i->second;
               }
             }
-            for (auto i = allocationType.begin(); i != allocationType.end();i++) {
+            for (auto i = allocationType.begin(); i != allocationType.end();
+                 i++) {
               string namePre = i->first;
               if (nameReq == namePre) {
                 allocation = i->second;
@@ -157,103 +156,90 @@ PreservedAnalyses AddressSanPass::run(Function &F,
               // auto *typePtr = inst->getType();
               // type = typePtr->getPointerElementType();
               if (req_index->getName().str().find("idxprom") != string::npos) {
+                idxprom = true;
                 auto *idxprom = dyn_cast<Instruction>(req_index)->getOperand(0);
                 errs() << "idxprom : " << *idxprom << "\n";
-                auto *index = dyn_cast<Instruction>(idxprom)->getOperand(0);
+                index = dyn_cast<Instruction>(idxprom)->getOperand(0);
                 errs() << "index : " << *index << "\n";
                 // auto *require_index =dyn_cast<Instruction>(index);
                 // auto* gepInst =
                 // dyn_cast<GetElementPtrInst>(require_index->getPointerOperand());
                 auto *constantExp = dyn_cast<ConstantExpr>(index);
 
-                if(constantExp && isa<GlobalVariable>(constantExp->getOperand(0))){
-                
+                if (constantExp &&
+                    isa<GlobalVariable>(constantExp->getOperand(0))) {
                   GlobalVariable *gVar =
                       dyn_cast<GlobalVariable>(constantExp->getOperand(0));
                   errs() << "GEP Instruction : " << *gVar << "\n";
                   errs() << "Operand Value : " << gVar->getNumOperands()
                          << "\n";
-                  ConstantStruct* constantStruct = dyn_cast<ConstantStruct>(gVar->getInitializer());
+                  ConstantStruct *constantStruct =
+                      dyn_cast<ConstantStruct>(gVar->getInitializer());
                   // errs()<<*constantStruct<<"\n";
-                  if(constantStruct)
-                  {
-                    ConstantInt* value = dyn_cast<ConstantInt>(constantStruct->getOperand(0));
+                  if (constantStruct) {
+                    ConstantInt *value =
+                        dyn_cast<ConstantInt>(constantStruct->getOperand(0));
                     APInt intValue = value->getValue();
                     required_index = intValue.getSExtValue();
-                  }
-                  else
-                  {
-                    int flag=0;
-                     for (Function::iterator bb = F.begin(), e = F.end(); bb != e; bb++) 
-                     {
-
-                     for (BasicBlock::iterator i = bb->begin(), i2 = bb->end(); i != i2; i++) 
-                     {
-                      auto *ins = dyn_cast<Instruction>(i);
-                     
-                      if(ins==inst)
-                      { flag=1;
-                        errs()<<"equal...\n";
-                        break;
-                      }
-                      if(isa<StoreInst>(ins))
-                      {
-                        errs()<<*ins<<*ins->getOperand(0)<<*ins->getOperand(1)<<"\n";
-                        if(ins->getOperand(1)==index)
-                        {
-                          ConstantInt* value = dyn_cast<ConstantInt>(ins->getOperand(0));
-                          APInt intValue = value->getValue();
-                          required_index = intValue.getSExtValue();
-                          
-                          
+                  } else {
+                    int flag = 0;
+                    for (Function::iterator bb = F.begin(), e = F.end();
+                         bb != e; bb++) {
+                      for (BasicBlock::iterator i = bb->begin(), i2 = bb->end();
+                           i != i2; i++) {
+                        auto *ins = dyn_cast<Instruction>(i);
+                        if (ins == inst) {
+                          flag = 1;
+                          errs() << "equal...\n";
+                          break;
+                        }
+                        if (isa<StoreInst>(ins)) {
+                          errs() << *ins << *ins->getOperand(0)
+                                 << *ins->getOperand(1) << "\n";
+                          if (ins->getOperand(1) == index) {
+                            ConstantInt *value =
+                                dyn_cast<ConstantInt>(ins->getOperand(0));
+                            APInt intValue = value->getValue();
+                            required_index = intValue.getSExtValue();
+                          }
                         }
                       }
-                     }
-                     if(flag==1)
-                     {
-                      break;
-                     }
-                     }
-                  }
-
-                
-                }
-                else{
-                    int flag=0;
-                     for (Function::iterator bb = F.begin(), e = F.end(); bb != e; bb++) 
-                     {
-
-                     for (BasicBlock::iterator i = bb->begin(), i2 = bb->end(); i != i2; i++) 
-                     {
-                      auto *ins = dyn_cast<Instruction>(i);
-                      
-                      if(ins==inst)
-                      { flag=1;
-                        errs()<<"equal...\n";
+                      if (flag == 1) {
                         break;
                       }
-                      if(isa<StoreInst>(ins))
-                      {
-                        errs()<<*ins<<*ins->getOperand(0)<<*ins->getOperand(1)<<"\n";
-                        if(ins->getOperand(1)==index)
-                        {
-                          ConstantInt* value = dyn_cast<ConstantInt>(ins->getOperand(0));
+                    }
+                  }
+
+                } else {
+                  int flag = 0;
+                  for (Function::iterator bb = F.begin(), e = F.end(); bb != e;
+                       bb++) {
+                    for (BasicBlock::iterator i = bb->begin(), i2 = bb->end();
+                         i != i2; i++) {
+                      auto *ins = dyn_cast<Instruction>(i);
+                      if (ins == inst) {
+                        flag = 1;
+                        errs() << "equal...\n";
+                        break;
+                      }
+                      if (isa<StoreInst>(ins)) {
+                        errs() << *ins << *ins->getOperand(0)
+                               << *ins->getOperand(1) << "\n";
+                        if (ins->getOperand(1) == index) {
+                          ConstantInt *value =
+                              dyn_cast<ConstantInt>(ins->getOperand(0));
                           APInt intValue = value->getValue();
                           required_index = intValue.getSExtValue();
-                          
-                          
                         }
                       }
-                     }
-                     if(flag==1){
+                    }
+                    if (flag == 1) {
                       break;
-                     }
-                     }
+                    }
+                  }
                 }
-                
-              
-              } 
-              else {
+
+              } else {
                 required_index = cast<ConstantInt>(req_index)->getSExtValue();
               }
             }
@@ -274,9 +260,57 @@ PreservedAnalyses AddressSanPass::run(Function &F,
 
             IRBuilder<> builder(next);
 
+            if (idxprom) {
+              AllocaInst *allocaInst =
+                  builder.CreateAlloca(Type::getInt32Ty(Ctx), nullptr);
+              auto *loadInstInput =
+                  builder.CreateLoad(Type::getInt32Ty(Ctx), index);
+              errs() << "Input Load : " << *loadInstInput << "\n";
+              llvm::ConstantInt *initialSize =
+                  llvm::ConstantInt::get(Ctx, llvm::APInt(64, initial_size));
+              auto *inSize = cast<Value>(initialSize);
+              errs() << "inSize : " << *inSize << "\n";
+              llvm::ConstantInt *dataSize =
+                  llvm::ConstantInt::get(Ctx, llvm::APInt(64, data_type_size));
+              auto *dSize = cast<Value>(dataSize);
+              errs() << "dSize : " << *dSize << "\n";
+              llvm::Type *i32Ty = llvm::Type::getInt32Ty(Ctx);
+              StoreInst *allocStore;
+
+              if (allocation == "calloc") {
+                auto *load = dyn_cast<Value>(loadInstInput);
+                errs() << "Load Calloc: " << *load << "\n";
+                llvm::Value *inSize32 = builder.CreateTrunc(inSize, i32Ty);
+                auto *addInst = builder.CreateAdd(load, inSize32);
+                errs() << "Add Inst : " << *addInst << "\n";
+                llvm::Value *dSize32 = builder.CreateTrunc(dSize, i32Ty);
+                auto *mulInst = builder.CreateMul(addInst, dSize32);
+                errs() << "Mul Inst : " << *mulInst << "\n";
+                auto *ptrToStore = allocaInst;
+                allocStore = builder.CreateStore(mulInst, ptrToStore);
+              } else if (allocation == "malloc") {
+                auto *load = dyn_cast<Value>(loadInstInput);
+                errs() << "Load Malloc: " << *load << "\n";
+                llvm::Value *inSize32 = builder.CreateTrunc(inSize, i32Ty);
+                auto *mulInst = builder.CreateMul(load, inSize32);
+                errs() << "Mul Inst : " << *mulInst << "\n";
+                errs() << "Alloc : " << *allocaInst << "\n";
+                auto *ptrToStore = allocaInst;
+                errs() << "ptrToStore : " << *ptrToStore << "\n";
+                allocStore = builder.CreateStore(mulInst, ptrToStore);
+                errs() << "allocStore : " << *allocStore << "\n";
+              }
+              Value *loadStore =
+                  builder.CreateLoad(Type::getInt32Ty(Ctx), allocaInst);
+              loadedValue =
+                  builder.CreateSExt(loadStore, llvm::Type::getInt64Ty(Ctx));
+              errs() << "loadedValue : " << *loadedValue << "\n";
+            }
             Value *loadInst = builder.CreateLoad(type_ptr, arr);
             errs() << "Load 1 : " << *loadInst << "\n";
+
             //  get the int 8 pointer type_ptr
+
             Type *int8Ty = Type::getInt8PtrTy(Ctx);
 
             //  Bitcasting from Destination bits to 8 bits
@@ -305,18 +339,26 @@ PreservedAnalyses AddressSanPass::run(Function &F,
 
             //  Here is the process of reallocation of array and it is
             //  converted into a Constant for the createcall function
-            errs() << "Require Index : " << required_index << "\n";
-            if (allocation == "calloc") {
-              reallocated_size =
-                  (initial_size + required_index) * data_type_size;
-              errs() << "Calloc Size : " << reallocated_size << "\n";
-              errs() << "Initial Size : \n" << initial_size;
-            } else if (allocation == "malloc") {
-              reallocated_size = initial_size * required_index;
-              errs() << "Initial Size : " << initial_size << "\n"
-                     << " Malloc Size : " << reallocated_size << "\n";
+
+            if (required_index != 0 || idxprom == false) {
+              errs() << "Require Index : " << required_index << "\n";
+              if (allocation == "calloc") {
+                reallocated_size =
+                    (initial_size + required_index) * data_type_size;
+                errs() << "Initial Size : \n"
+                       << initial_size << "\n"
+                       << "Calloc Size : " << reallocated_size << "\n";
+              } else if (allocation == "malloc") {
+                reallocated_size = initial_size * required_index;
+                errs() << "Initial Size : " << initial_size << "\n"
+                       << " Malloc Size : " << reallocated_size << "\n";
+              }
+              errs() << "Reallocated Size : " << reallocated_size << "\n";
+            } else {
+              // ConstantInt *intValue = cast<ConstantInt>(loadedValue);
+
+              // errs() << "IntValue : " << *value << "\n";
             }
-            errs() << "Reallocated Size : " << reallocated_size << "\n";
             Constant *newSize =
                 ConstantInt::get(Type::getInt64Ty(Ctx), reallocated_size);
             errs() << "new Size : " << *newSize << "\n";
