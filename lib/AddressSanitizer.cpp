@@ -125,11 +125,13 @@ PreservedAnalyses AddressSanPass::run(Function &F,
           //  To check whether it is a asan_report
 
           if (call_inst.find("__asan_report_") != string::npos) {
+            
             bool idxprom = false;
             Value *index;
             int64_t initial_size;
             string allocation;
             Value *loadedValue;
+
             auto *ptrInst = dyn_cast<Instruction>(callInst->getArgOperand(0));
             errs() << "PtrInst : " << *ptrInst << "\n";
             auto *arrIdx = dyn_cast<Instruction>(ptrInst->getOperand(0));
@@ -153,17 +155,12 @@ PreservedAnalyses AddressSanPass::run(Function &F,
             errs() << "Arr Idx Name : " << *arrNameReq << "\n";
             if (isa<GetElementPtrInst>(arrIdx)) {
               auto *req_index = arrIdx->getOperand(1);
-              // auto *typePtr = inst->getType();
-              // type = typePtr->getPointerElementType();
               if (req_index->getName().str().find("idxprom") != string::npos) {
                 idxprom = true;
                 auto *idxprom = dyn_cast<Instruction>(req_index)->getOperand(0);
                 errs() << "idxprom : " << *idxprom << "\n";
                 index = dyn_cast<Instruction>(idxprom)->getOperand(0);
                 errs() << "index : " << *index << "\n";
-                // auto *require_index =dyn_cast<Instruction>(index);
-                // auto* gepInst =
-                // dyn_cast<GetElementPtrInst>(require_index->getPointerOperand());
                 auto *constantExp = dyn_cast<ConstantExpr>(index);
 
                 if (constantExp &&
@@ -175,7 +172,6 @@ PreservedAnalyses AddressSanPass::run(Function &F,
                          << "\n";
                   ConstantStruct *constantStruct =
                       dyn_cast<ConstantStruct>(gVar->getInitializer());
-                  // errs()<<*constantStruct<<"\n";
                   if (constantStruct) {
                     ConstantInt *value =
                         dyn_cast<ConstantInt>(constantStruct->getOperand(0));
@@ -256,6 +252,7 @@ PreservedAnalyses AddressSanPass::run(Function &F,
 
             auto *next = callInst->getNextNode();
             errs() << "Next : " << *next << "\n";
+
             // Memory reallocation instrumentation code.
 
             IRBuilder<> builder(next);
@@ -340,7 +337,7 @@ PreservedAnalyses AddressSanPass::run(Function &F,
             //  Here is the process of reallocation of array and it is
             //  converted into a Constant for the createcall function
 
-            if (required_index != 0 || idxprom == false) {
+            if (idxprom == false) {
               errs() << "Require Index : " << required_index << "\n";
               if (allocation == "calloc") {
                 reallocated_size =
@@ -354,20 +351,25 @@ PreservedAnalyses AddressSanPass::run(Function &F,
                        << " Malloc Size : " << reallocated_size << "\n";
               }
               errs() << "Reallocated Size : " << reallocated_size << "\n";
-            } else {
-              // ConstantInt *intValue = cast<ConstantInt>(loadedValue);
-
-              // errs() << "IntValue : " << *value << "\n";
-            }
+            } 
             Constant *newSize =
                 ConstantInt::get(Type::getInt64Ty(Ctx), reallocated_size);
             errs() << "new Size : " << *newSize << "\n";
+
             //  Here the create call function is used to call the reallocation
             //  function and point it to the pointer with the new size for the
             //  array and bitcasting it to the 32 bits from 8 bits.
 
-            auto *reallocCall =
+            CallInst *reallocCall;
+
+            if(idxprom){
+            reallocCall =
+                builder.CreateCall(reallocFunc, {bitinstDestTo8, loadedValue});
+            }
+            else{
+              reallocCall =
                 builder.CreateCall(reallocFunc, {bitinstDestTo8, newSize});
+            }
             auto *bitinst8ToDest = builder.CreateBitCast(reallocCall, type_ptr);
 
             //  The bit casted value is stored and the unreachable statement
