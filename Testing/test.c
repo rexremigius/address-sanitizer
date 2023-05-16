@@ -1,13 +1,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 int z[10];
-int a;
+// int a;
 int main() {
   // int x[10];
   // int *x=(int*)calloc(sizeof(x),sizeof(int)) ;
   double *x = malloc(10 * sizeof(double));
   float *y = calloc(100, sizeof(float));
-  //a = 30;
+  int a;
   scanf("%d",&a);
   // int b=50;
   // char *x = calloc(10,sizeof(char));
@@ -25,7 +25,9 @@ int main() {
   printf("%lf\n", x[a]);
   printf("%f\n", y[150]);
 
-    // a = 60;
+  printf("%d\n",sizeof(x));
+  printf("%d\n",sizeof(y));
+  // a = 60;
   // printf("%lf\n",x[11]);
   // printf("%c\n",x[11]);
   free(x);

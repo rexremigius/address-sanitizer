@@ -74,7 +74,7 @@ PreservedAnalyses AddressSanPass::run(Function &F,
         if (isa<CallInst>(inst)) {
           auto *callInst = dyn_cast<CallInst>(inst);
           string call_inst = callInst->getCalledFunction()->getName().str();
-          if ((call_inst.find("calloc") != string::npos)) {
+          if ((call_inst.find("calloc") != string::npos)&& !(call_inst.find("asan") != string::npos)) {
             auto *initial_index = callInst->getOperand(0);
             int64_t initial_size =
                 cast<ConstantInt>(initial_index)->getSExtValue();
@@ -98,20 +98,25 @@ PreservedAnalyses AddressSanPass::run(Function &F,
             //  pointer which the destination type for further ref If not then
             //  the pointer is the return type of the instruction
 
-            if (isa<BitCastInst>(inst->getNextNode())) {
+            if (isa<BitCastInst>(inst->getNextNode())) 
+            {
               BitCastInst *bitcastInst =
                   dyn_cast<BitCastInst>(inst->getNextNode());
               type_ptr = bitcastInst->getDestTy();
-            } else {
+            } 
+            else 
+            {
               type_ptr = inst->getType();
             }
-          } else if (call_inst.find("malloc") != string::npos) {
+          } else if ((call_inst.find("malloc") != string::npos)&& !(call_inst.find("asan") != string::npos)) 
+          {
             auto *initial_index = callInst->getOperand(0);
             int64_t initial_size =
                 cast<ConstantInt>(initial_index)->getSExtValue();
             string allocation = call_inst;
             string arrName;
-            if (isa<BitCastInst>(callInst->getPrevNode()->getPrevNode())) {
+            if (isa<BitCastInst>(callInst->getPrevNode()->getPrevNode())) 
+            {
               arrName = (callInst->getPrevNode()->getPrevNode())
                             ->getOperand(0)
                             ->getName()
@@ -124,8 +129,9 @@ PreservedAnalyses AddressSanPass::run(Function &F,
 
           //  To check whether it is a asan_report
 
-          if (call_inst.find("__asan_report_") != string::npos) {
-            
+          if (call_inst.find("__asan_report_") != string::npos) 
+          {
+
             bool idxprom = false;
             Value *index;
             int64_t initial_size;
@@ -139,23 +145,27 @@ PreservedAnalyses AddressSanPass::run(Function &F,
             auto *arrIdxLoad = dyn_cast<Instruction>(arrIdx->getOperand(0));
             auto *arrNameReq = arrIdxLoad->getOperand(0);
             string nameReq = arrNameReq->getName().str();
-            for (auto i = initialSize.begin(); i != initialSize.end(); i++) {
+            for (auto i = initialSize.begin(); i != initialSize.end(); i++) 
+            {
               string namePre = i->first;
-              if (nameReq == namePre) {
+              if (nameReq == namePre) 
+              {
                 initial_size = i->second;
               }
             }
-            for (auto i = allocationType.begin(); i != allocationType.end();
-                 i++) {
+            for (auto i = allocationType.begin(); i != allocationType.end();i++) 
+            {
               string namePre = i->first;
-              if (nameReq == namePre) {
+              if (nameReq == namePre) 
+              {
                 allocation = i->second;
               }
             }
             errs() << "Arr Idx Name : " << *arrNameReq << "\n";
             if (isa<GetElementPtrInst>(arrIdx)) {
               auto *req_index = arrIdx->getOperand(1);
-              if (req_index->getName().str().find("idxprom") != string::npos) {
+              if (req_index->getName().str().find("idxprom") != string::npos) 
+              {
                 idxprom = true;
                 auto *idxprom = dyn_cast<Instruction>(req_index)->getOperand(0);
                 errs() << "idxprom : " << *idxprom << "\n";
@@ -163,8 +173,8 @@ PreservedAnalyses AddressSanPass::run(Function &F,
                 errs() << "index : " << *index << "\n";
                 auto *constantExp = dyn_cast<ConstantExpr>(index);
 
-                if (constantExp &&
-                    isa<GlobalVariable>(constantExp->getOperand(0))) {
+                if (constantExp && isa<GlobalVariable>(constantExp->getOperand(0))) 
+                {
                   GlobalVariable *gVar =
                       dyn_cast<GlobalVariable>(constantExp->getOperand(0));
                   errs() << "GEP Instruction : " << *gVar << "\n";
@@ -172,70 +182,82 @@ PreservedAnalyses AddressSanPass::run(Function &F,
                          << "\n";
                   ConstantStruct *constantStruct =
                       dyn_cast<ConstantStruct>(gVar->getInitializer());
-                  if (constantStruct) {
+                  if (constantStruct) 
+                  {
                     ConstantInt *value =
                         dyn_cast<ConstantInt>(constantStruct->getOperand(0));
                     APInt intValue = value->getValue();
                     required_index = intValue.getSExtValue();
-                  } else {
+                  } 
+                  else 
+                  {
                     int flag = 0;
-                    for (Function::iterator bb = F.begin(), e = F.end();
-                         bb != e; bb++) {
-                      for (BasicBlock::iterator i = bb->begin(), i2 = bb->end();
-                           i != i2; i++) {
+                    for (Function::iterator bb = F.begin(), e = F.end();bb != e; bb++) 
+                    {
+                      for (BasicBlock::iterator i = bb->begin(), i2 = bb->end();i != i2; i++) 
+                      {
                         auto *ins = dyn_cast<Instruction>(i);
-                        if (ins == inst) {
+                        if (ins == inst) 
+                        {
                           flag = 1;
                           errs() << "equal...\n";
                           break;
                         }
-                        if (isa<StoreInst>(ins)) {
+                        if (isa<StoreInst>(ins)) 
+                        {
                           errs() << *ins << *ins->getOperand(0)
                                  << *ins->getOperand(1) << "\n";
-                          if (ins->getOperand(1) == index) {
-                            ConstantInt *value =
-                                dyn_cast<ConstantInt>(ins->getOperand(0));
+                          if (ins->getOperand(1) == index) 
+                          {
+                            ConstantInt *value = dyn_cast<ConstantInt>(ins->getOperand(0));
                             APInt intValue = value->getValue();
                             required_index = intValue.getSExtValue();
                           }
                         }
                       }
-                      if (flag == 1) {
+                      if (flag == 1) 
+                      {
                         break;
                       }
                     }
                   }
-
-                } else {
+                } 
+                else 
+                {
                   int flag = 0;
-                  for (Function::iterator bb = F.begin(), e = F.end(); bb != e;
-                       bb++) {
-                    for (BasicBlock::iterator i = bb->begin(), i2 = bb->end();
-                         i != i2; i++) {
+                  for (Function::iterator bb = F.begin(), e = F.end(); bb != e;bb++) 
+                  {
+                    for (BasicBlock::iterator i = bb->begin(), i2 = bb->end();i != i2; i++) 
+                    {
                       auto *ins = dyn_cast<Instruction>(i);
-                      if (ins == inst) {
+                      if (ins == inst) 
+                      {
                         flag = 1;
                         errs() << "equal...\n";
                         break;
                       }
-                      if (isa<StoreInst>(ins)) {
+                      if (isa<StoreInst>(ins)) 
+                      {
                         errs() << *ins << *ins->getOperand(0)
                                << *ins->getOperand(1) << "\n";
-                        if (ins->getOperand(1) == index) {
-                          ConstantInt *value =
-                              dyn_cast<ConstantInt>(ins->getOperand(0));
+                        if (ins->getOperand(1) == index) 
+                        {
+                          ConstantInt *value = dyn_cast<ConstantInt>(ins->getOperand(0));
                           APInt intValue = value->getValue();
                           required_index = intValue.getSExtValue();
                         }
                       }
                     }
-                    if (flag == 1) {
+                    if (flag == 1) 
+                    {
                       break;
                     }
                   }
                 }
 
-              } else {
+              } 
+              else 
+              {
                 required_index = cast<ConstantInt>(req_index)->getSExtValue();
               }
             }
