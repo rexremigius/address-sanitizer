@@ -54,6 +54,7 @@ PreservedAnalyses AddressSanPass::run(Function &F,
         // for (auto e = arrSet.begin(); e != arrSet.end(); e++) {
         //   errs() <<"Array Value : "<< e->first << "-" << *(e->second)<< "\n";
         // }
+
         // dynamically casting the iterator to instructions
 
         auto *inst = dyn_cast<Instruction>(i);
@@ -74,7 +75,8 @@ PreservedAnalyses AddressSanPass::run(Function &F,
         if (isa<CallInst>(inst)) {
           auto *callInst = dyn_cast<CallInst>(inst);
           string call_inst = callInst->getCalledFunction()->getName().str();
-          if ((call_inst.find("calloc") != string::npos)&& !(call_inst.find("asan") != string::npos)) {
+          if ((call_inst.find("calloc") != string::npos) &&
+              !(call_inst.find("asan") != string::npos)) {
             auto *initial_index = callInst->getOperand(0);
             int64_t initial_size =
                 cast<ConstantInt>(initial_index)->getSExtValue();
@@ -98,25 +100,21 @@ PreservedAnalyses AddressSanPass::run(Function &F,
             //  pointer which the destination type for further ref If not then
             //  the pointer is the return type of the instruction
 
-            if (isa<BitCastInst>(inst->getNextNode())) 
-            {
+            if (isa<BitCastInst>(inst->getNextNode())) {
               BitCastInst *bitcastInst =
                   dyn_cast<BitCastInst>(inst->getNextNode());
               type_ptr = bitcastInst->getDestTy();
-            } 
-            else 
-            {
+            } else {
               type_ptr = inst->getType();
             }
-          } else if ((call_inst.find("malloc") != string::npos)&& !(call_inst.find("asan") != string::npos)) 
-          {
+          } else if ((call_inst.find("malloc") != string::npos) &&
+                     !(call_inst.find("asan") != string::npos)) {
             auto *initial_index = callInst->getOperand(0);
             int64_t initial_size =
                 cast<ConstantInt>(initial_index)->getSExtValue();
             string allocation = call_inst;
             string arrName;
-            if (isa<BitCastInst>(callInst->getPrevNode()->getPrevNode())) 
-            {
+            if (isa<BitCastInst>(callInst->getPrevNode()->getPrevNode())) {
               arrName = (callInst->getPrevNode()->getPrevNode())
                             ->getOperand(0)
                             ->getName()
@@ -129,8 +127,9 @@ PreservedAnalyses AddressSanPass::run(Function &F,
 
           //  To check whether it is a asan_report
 
-          if (call_inst.find("__asan_report_") != string::npos) 
+          if (call_inst.find("__asan_report_") != string::npos)
           {
+            // Initializing of values for reallocation of values
 
             bool idxprom = false;
             Value *index;
@@ -138,13 +137,27 @@ PreservedAnalyses AddressSanPass::run(Function &F,
             string allocation;
             Value *loadedValue;
 
+            //  getting the operand from the called function move to ptr instruction
+
             auto *ptrInst = dyn_cast<Instruction>(callInst->getArgOperand(0));
             errs() << "PtrInst : " << *ptrInst << "\n";
+            
+            //  Moving to the Array index instruction to get the index of the array
+            
             auto *arrIdx = dyn_cast<Instruction>(ptrInst->getOperand(0));
             errs() << "arrIdx : " << *arrIdx << "\n";
+
+            //  Get the load instruction of the Array
+
             auto *arrIdxLoad = dyn_cast<Instruction>(arrIdx->getOperand(0));
+
+            // Name of the respective array and convert it to the string
+
             auto *arrNameReq = arrIdxLoad->getOperand(0);
             string nameReq = arrNameReq->getName().str();
+
+            // Iterate the map which contains the array name and initial size
+
             for (auto i = initialSize.begin(); i != initialSize.end(); i++) 
             {
               string namePre = i->first;
@@ -153,19 +166,25 @@ PreservedAnalyses AddressSanPass::run(Function &F,
                 initial_size = i->second;
               }
             }
+
+            // Also we iterate another map which has allocation type and array name
+
             for (auto i = allocationType.begin(); i != allocationType.end();i++) 
             {
               string namePre = i->first;
-              if (nameReq == namePre) 
-              {
+              if (nameReq == namePre) {
                 allocation = i->second;
               }
             }
+
             errs() << "Arr Idx Name : " << *arrNameReq << "\n";
+          
+            // Checking whether the arrIdx is a GEP instruction or not
+            // If it is a GEP instruction then we are getting the required Index which has global variable in it.
+
             if (isa<GetElementPtrInst>(arrIdx)) {
               auto *req_index = arrIdx->getOperand(1);
-              if (req_index->getName().str().find("idxprom") != string::npos) 
-              {
+              if (req_index->getName().str().find("idxprom") != string::npos) {
                 idxprom = true;
                 auto *idxprom = dyn_cast<Instruction>(req_index)->getOperand(0);
                 errs() << "idxprom : " << *idxprom << "\n";
@@ -173,22 +192,24 @@ PreservedAnalyses AddressSanPass::run(Function &F,
                 errs() << "index : " << *index << "\n";
                 auto *constantExp = dyn_cast<ConstantExpr>(index);
 
-                if (constantExp && isa<GlobalVariable>(constantExp->getOperand(0))) 
-                {
+                if (constantExp &&
+                    isa<GlobalVariable>(constantExp->getOperand(0))) {
                   GlobalVariable *gVar =
                       dyn_cast<GlobalVariable>(constantExp->getOperand(0));
                   errs() << "GEP Instruction : " << *gVar << "\n";
-                  errs() << "Operand Value : " << gVar->getNumOperands()
-                         << "\n";
+                  errs() << "Operand Value : " << gVar->getNumOperands() << "\n";
+
+                  // it checks whether the constant struct has been initialized or not
+                  // if it is initialized then we can able to get the required index.
+                  // else it iterates till the call instruction of Asan Report and breaks.
                   ConstantStruct *constantStruct =
                       dyn_cast<ConstantStruct>(gVar->getInitializer());
-                  if (constantStruct) 
-                  {
+                  if (constantStruct) {
                     ConstantInt *value =
                         dyn_cast<ConstantInt>(constantStruct->getOperand(0));
                     APInt intValue = value->getValue();
                     required_index = intValue.getSExtValue();
-                  } 
+                  }
                   else 
                   {
                     int flag = 0;
@@ -200,7 +221,6 @@ PreservedAnalyses AddressSanPass::run(Function &F,
                         if (ins == inst) 
                         {
                           flag = 1;
-                          errs() << "equal...\n";
                           break;
                         }
                         if (isa<StoreInst>(ins)) 
@@ -209,7 +229,8 @@ PreservedAnalyses AddressSanPass::run(Function &F,
                                  << *ins->getOperand(1) << "\n";
                           if (ins->getOperand(1) == index) 
                           {
-                            ConstantInt *value = dyn_cast<ConstantInt>(ins->getOperand(0));
+                            ConstantInt *value =
+                                dyn_cast<ConstantInt>(ins->getOperand(0));
                             APInt intValue = value->getValue();
                             required_index = intValue.getSExtValue();
                           }
@@ -230,19 +251,18 @@ PreservedAnalyses AddressSanPass::run(Function &F,
                     for (BasicBlock::iterator i = bb->begin(), i2 = bb->end();i != i2; i++) 
                     {
                       auto *ins = dyn_cast<Instruction>(i);
-                      if (ins == inst) 
+                      if (ins == inst)
                       {
                         flag = 1;
-                        errs() << "equal...\n";
                         break;
                       }
-                      if (isa<StoreInst>(ins)) 
-                      {
+                      if (isa<StoreInst>(ins)) {
                         errs() << *ins << *ins->getOperand(0)
                                << *ins->getOperand(1) << "\n";
                         if (ins->getOperand(1) == index) 
                         {
-                          ConstantInt *value = dyn_cast<ConstantInt>(ins->getOperand(0));
+                          ConstantInt *value =
+                              dyn_cast<ConstantInt>(ins->getOperand(0));
                           APInt intValue = value->getValue();
                           required_index = intValue.getSExtValue();
                         }
@@ -255,9 +275,7 @@ PreservedAnalyses AddressSanPass::run(Function &F,
                   }
                 }
 
-              } 
-              else 
-              {
+              } else {
                 required_index = cast<ConstantInt>(req_index)->getSExtValue();
               }
             }
@@ -278,6 +296,11 @@ PreservedAnalyses AddressSanPass::run(Function &F,
             // Memory reallocation instrumentation code.
 
             IRBuilder<> builder(next);
+
+            // Here we are checking whether the idxprom is true or not.
+            // If it is true then we are creating the instruction that are required for the reallocation of memory by 
+            // using our formula for both malloc and calloc.
+            // calloc has a add instruction and mul instruction whereas the malloc has only mul instruction
 
             if (idxprom) {
               AllocaInst *allocaInst =
@@ -319,6 +342,8 @@ PreservedAnalyses AddressSanPass::run(Function &F,
                 allocStore = builder.CreateStore(mulInst, ptrToStore);
                 errs() << "allocStore : " << *allocStore << "\n";
               }
+
+              // we are again loading the instruction which is stored to get the value.
               Value *loadStore =
                   builder.CreateLoad(Type::getInt32Ty(Ctx), allocaInst);
               loadedValue =
@@ -353,11 +378,11 @@ PreservedAnalyses AddressSanPass::run(Function &F,
 
             FunctionCallee reallocFunc = M->getFunction("realloc");
 
-            // errs()  << "Intial Size : " << initial_size
-            //         << "\tRequired Index : " << required_index << "\n";
-
             //  Here is the process of reallocation of array and it is
             //  converted into a Constant for the createcall function
+
+            // Here we are again checking for the idxprom if it is false then we are moving back to our 
+            // manual method of reallocation size.
 
             if (idxprom == false) {
               errs() << "Require Index : " << required_index << "\n";
@@ -373,7 +398,7 @@ PreservedAnalyses AddressSanPass::run(Function &F,
                        << " Malloc Size : " << reallocated_size << "\n";
               }
               errs() << "Reallocated Size : " << reallocated_size << "\n";
-            } 
+            }
             Constant *newSize =
                 ConstantInt::get(Type::getInt64Ty(Ctx), reallocated_size);
             errs() << "new Size : " << *newSize << "\n";
@@ -384,13 +409,18 @@ PreservedAnalyses AddressSanPass::run(Function &F,
 
             CallInst *reallocCall;
 
-            if(idxprom){
-            reallocCall =
-                builder.CreateCall(reallocFunc, {bitinstDestTo8, loadedValue});
-            }
-            else{
+            // For the realloc call if idxprom is present we can use a type of call instruction which gets the
+            // loaded value as one of the argument
+            // If not then we can have i64 as one of the argument
+
+            if (idxprom) 
+            {
+              reallocCall = builder.CreateCall(reallocFunc,{bitinstDestTo8, loadedValue});
+            } 
+            else 
+            {
               reallocCall =
-                builder.CreateCall(reallocFunc, {bitinstDestTo8, newSize});
+                  builder.CreateCall(reallocFunc, {bitinstDestTo8, newSize});
             }
             auto *bitinst8ToDest = builder.CreateBitCast(reallocCall, type_ptr);
 

@@ -8,7 +8,7 @@ rm  -r ~/address-sanitizer/Testing/error.log.*
 
 # Using clang command to convert .c file to .ll
 
-clang -S -emit-llvm -Xclang -disable-O0-optnone -fsanitize=address -fno-omit-frame-pointer ~/address-sanitizer/Testing/test.c -o ~/address-sanitizer/Testing/test.ll
+clang -S -emit-llvm -Xclang -disable-O0-optnone -fsanitize=address -fno-omit-frame-pointer -fsanitize-address-use-after-return=never ~/address-sanitizer/Testing/test.c -o ~/address-sanitizer/Testing/test.ll
 
 # Using opt to invoke the transformation pass - AddressSanitizer and write the output to out.ll
 
@@ -20,7 +20,7 @@ llc -filetype=obj ~/address-sanitizer/Testing/out.ll -o ~/address-sanitizer/Test
 
 # Using clang to convert .o file into executable and using Address Sanitizer
 
-clang -g -fsanitize=address ~/address-sanitizer/Testing/out.o -o ~/address-sanitizer/Testing/out
+clang -g -fsanitize=address -fsanitize-address-use-after-return=never ~/address-sanitizer/Testing/out.o -o ~/address-sanitizer/Testing/out
 
 # Setting environmental variable for logging the error report
 
@@ -33,7 +33,13 @@ cd Testing
 
 # Running the executable
 
-./out
+#./out
+
+#echo 655366 632.168153 1553.531 | ./out
+echo 175 4865.5844 6840.864 | ./out
+#echo 200 785.153 463.5461 | ./out
+
+size ./out
 
 # Opening the error log file using text editor
 
