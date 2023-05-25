@@ -27,12 +27,15 @@ PreservedAnalyses AddressSanPass::run(Function &F,
   Type *type_ptr;
   Type *type;
   int64_t required_index = 0;
-  int64_t data_type_size = 0;
+  Value* data_type_size;
   int64_t reallocated_size = 0;
+  Value* initial_Size;
+  int64_t initial_Size_t=0;
+  int64_t data_type_size_t=0;
 
   // Map for selecting the initial size and allocation type
 
-  map<string, int64_t> initialSize;
+  map<string, Value*> initialSize;
   map<string, string> allocationType;
 
   //  Vector to push the unwanted instruction and delete it at end.
@@ -72,27 +75,37 @@ PreservedAnalyses AddressSanPass::run(Function &F,
         //  asan_report and perform the reallocation instrumentation
         //  Check whether the dynamic allocation is malloc or calloc
 
+        bool ini_Size=false;
         if (isa<CallInst>(inst)) {
           auto *callInst = dyn_cast<CallInst>(inst);
           string call_inst = callInst->getCalledFunction()->getName().str();
           if ((call_inst.find("calloc") != string::npos) &&
               !(call_inst.find("asan") != string::npos)) {
             auto *initial_index = callInst->getOperand(0);
-            int64_t initial_size =
-                cast<ConstantInt>(initial_index)->getSExtValue();
+           // initial_size =t<ConstantInt>(initial_index)->getSExtValue();
+            if(isa<SExtInst>(initial_index)){
+              errs()<<"calloc value is not constant\n";
+              ini_Size=true;
+              initial_Size=initial_index;
+            }
+            else{
+              // initial_size =   cast<ConstantInt>(initial_index)->getSExtValue();
+              initial_Size_t = cast<ConstantInt>(initial_index)->getSExtValue();
+              initial_Size=initial_index; 
+            }
             auto *dataTypeSize = callInst->getOperand(1);
-            data_type_size = cast<ConstantInt>(dataTypeSize)->getSExtValue();
+            data_type_size_t = cast<ConstantInt>(dataTypeSize)->getSExtValue();
 
             string allocation = call_inst;
             string arrName;
-
-            if (isa<BitCastInst>(callInst->getPrevNode()->getPrevNode())) {
-              arrName = (callInst->getPrevNode()->getPrevNode())
-                            ->getOperand(0)
+            errs()<<"Instructions-Calloc : "<<*(callInst->getNextNode()->getNextNode())<<"\n";
+            if (isa<StoreInst>(callInst->getNextNode()->getNextNode())) {
+              arrName = (callInst->getNextNode()->getNextNode())
+                            ->getOperand(1)
                             ->getName()
                             .str();
               errs() << "Arr Name : " << arrName << "\n";
-              initialSize.insert(make_pair(arrName, initial_size));
+              initialSize.insert(make_pair(arrName, initial_Size));
               allocationType.insert(make_pair(arrName, allocation));
             }
 
@@ -100,27 +113,39 @@ PreservedAnalyses AddressSanPass::run(Function &F,
             //  pointer which the destination type for further ref If not then
             //  the pointer is the return type of the instruction
 
-            if (isa<BitCastInst>(inst->getNextNode())) {
+            if (isa<BitCastInst>(inst->getNextNode())) 
+            {
               BitCastInst *bitcastInst =
                   dyn_cast<BitCastInst>(inst->getNextNode());
               type_ptr = bitcastInst->getDestTy();
-            } else {
+            } else 
+            {
               type_ptr = inst->getType();
             }
-          } else if ((call_inst.find("malloc") != string::npos) &&
-                     !(call_inst.find("asan") != string::npos)) {
+          } else if ((call_inst.find("malloc") != string::npos) && !(call_inst.find("asan") != string::npos)) {
             auto *initial_index = callInst->getOperand(0);
-            int64_t initial_size =
-                cast<ConstantInt>(initial_index)->getSExtValue();
+            if(isa<MulOperator>(initial_index))
+            {
+              errs()<<"malloc value is not constant\n";
+              //ini_Size=true;
+              initial_Size=initial_index;
+            }
+            else
+            {
+                initial_Size_t = cast<ConstantInt>(initial_index)->getSExtValue();  
+                initial_Size=initial_index;
+            }
             string allocation = call_inst;
             string arrName;
-            if (isa<BitCastInst>(callInst->getPrevNode()->getPrevNode())) {
-              arrName = (callInst->getPrevNode()->getPrevNode())
-                            ->getOperand(0)
+            errs()<<"Instructions-Malloc : "<<*(callInst->getNextNode()->getNextNode())<<"\n";
+            if (isa<StoreInst>(callInst->getNextNode()->getNextNode())) 
+            {
+              arrName = (callInst->getNextNode()->getNextNode())
+                            ->getOperand(1)
                             ->getName()
                             .str();
               errs() << "Arr Name : " << arrName << "\n";
-              initialSize.insert(make_pair(arrName, initial_size));
+              initialSize.insert(make_pair(arrName, initial_Size));
               allocationType.insert(make_pair(arrName, allocation));
             }
           }
@@ -129,11 +154,13 @@ PreservedAnalyses AddressSanPass::run(Function &F,
 
           if (call_inst.find("__asan_report_") != string::npos)
           {
+
             // Initializing of values for reallocation of values
 
             bool idxprom = false;
             Value *index;
-            int64_t initial_size;
+            int64_t initial_size_t=0;
+            Value* initial_size;
             string allocation;
             Value *loadedValue;
 
@@ -155,6 +182,7 @@ PreservedAnalyses AddressSanPass::run(Function &F,
 
             auto *arrNameReq = arrIdxLoad->getOperand(0);
             string nameReq = arrNameReq->getName().str();
+            errs()<<"Name Req : "<<nameReq<<"\n";
 
             // Iterate the map which contains the array name and initial size
 
@@ -163,9 +191,15 @@ PreservedAnalyses AddressSanPass::run(Function &F,
               string namePre = i->first;
               if (nameReq == namePre) 
               {
-                initial_size = i->second;
+                auto* inSize=i->second;
+                  if(isa<Constant>(inSize)){
+                    initial_size_t = cast<ConstantInt>(inSize)->getSExtValue();
+                  }
+                  else{
+                    initial_size = inSize;
+                  }
               }
-            }
+            } 
 
             // Also we iterate another map which has allocation type and array name
 
@@ -182,7 +216,8 @@ PreservedAnalyses AddressSanPass::run(Function &F,
             // Checking whether the arrIdx is a GEP instruction or not
             // If it is a GEP instruction then we are getting the required Index which has global variable in it.
 
-            if (isa<GetElementPtrInst>(arrIdx)) {
+            if (isa<GetElementPtrInst>(arrIdx)) 
+            {
               auto *req_index = arrIdx->getOperand(1);
               if (req_index->getName().str().find("idxprom") != string::npos) {
                 idxprom = true;
@@ -192,8 +227,8 @@ PreservedAnalyses AddressSanPass::run(Function &F,
                 errs() << "index : " << *index << "\n";
                 auto *constantExp = dyn_cast<ConstantExpr>(index);
 
-                if (constantExp &&
-                    isa<GlobalVariable>(constantExp->getOperand(0))) {
+                if (constantExp && isa<GlobalVariable>(constantExp->getOperand(0))) 
+                {
                   GlobalVariable *gVar =
                       dyn_cast<GlobalVariable>(constantExp->getOperand(0));
                   errs() << "GEP Instruction : " << *gVar << "\n";
@@ -202,9 +237,11 @@ PreservedAnalyses AddressSanPass::run(Function &F,
                   // it checks whether the constant struct has been initialized or not
                   // if it is initialized then we can able to get the required index.
                   // else it iterates till the call instruction of Asan Report and breaks.
+
                   ConstantStruct *constantStruct =
                       dyn_cast<ConstantStruct>(gVar->getInitializer());
-                  if (constantStruct) {
+                  if (constantStruct) 
+                  {
                     ConstantInt *value =
                         dyn_cast<ConstantInt>(constantStruct->getOperand(0));
                     APInt intValue = value->getValue();
@@ -264,7 +301,7 @@ PreservedAnalyses AddressSanPass::run(Function &F,
                           ConstantInt *value =
                               dyn_cast<ConstantInt>(ins->getOperand(0));
                           APInt intValue = value->getValue();
-                          required_index = intValue.getSExtValue();
+                          required_index = intValue.getSExtValue(); 
                         }
                       }
                     }
@@ -302,24 +339,26 @@ PreservedAnalyses AddressSanPass::run(Function &F,
             // using our formula for both malloc and calloc.
             // calloc has a add instruction and mul instruction whereas the malloc has only mul instruction
 
-            if (idxprom) {
+            if (idxprom) 
+            {
               AllocaInst *allocaInst =
                   builder.CreateAlloca(Type::getInt32Ty(Ctx), nullptr);
               auto *loadInstInput =
                   builder.CreateLoad(Type::getInt32Ty(Ctx), index);
               errs() << "Input Load : " << *loadInstInput << "\n";
               llvm::ConstantInt *initialSize =
-                  llvm::ConstantInt::get(Ctx, llvm::APInt(64, initial_size));
+                  llvm::ConstantInt::get(Ctx, llvm::APInt(64, initial_size_t));
               auto *inSize = cast<Value>(initialSize);
               errs() << "inSize : " << *inSize << "\n";
               llvm::ConstantInt *dataSize =
-                  llvm::ConstantInt::get(Ctx, llvm::APInt(64, data_type_size));
+                  llvm::ConstantInt::get(Ctx,llvm:: APInt(64, data_type_size_t));
               auto *dSize = cast<Value>(dataSize);
               errs() << "dSize : " << *dSize << "\n";
               llvm::Type *i32Ty = llvm::Type::getInt32Ty(Ctx);
               StoreInst *allocStore;
 
-              if (allocation == "calloc") {
+              if (allocation == "calloc") 
+               {
                 auto *load = dyn_cast<Value>(loadInstInput);
                 errs() << "Load Calloc: " << *load << "\n";
                 llvm::Value *inSize32 = builder.CreateTrunc(inSize, i32Ty);
@@ -344,6 +383,7 @@ PreservedAnalyses AddressSanPass::run(Function &F,
               }
 
               // we are again loading the instruction which is stored to get the value.
+
               Value *loadStore =
                   builder.CreateLoad(Type::getInt32Ty(Ctx), allocaInst);
               loadedValue =
@@ -388,13 +428,13 @@ PreservedAnalyses AddressSanPass::run(Function &F,
               errs() << "Require Index : " << required_index << "\n";
               if (allocation == "calloc") {
                 reallocated_size =
-                    (initial_size + required_index) * data_type_size;
+                    (initial_size_t + required_index) * data_type_size_t;
                 errs() << "Initial Size : \n"
                        << initial_size << "\n"
                        << "Calloc Size : " << reallocated_size << "\n";
               } else if (allocation == "malloc") {
-                reallocated_size = initial_size * required_index;
-                errs() << "Initial Size : " << initial_size << "\n"
+                reallocated_size = initial_size_t * required_index;
+                errs() << "Initial Size : " << initial_size_t << "\n"
                        << " Malloc Size : " << reallocated_size << "\n";
               }
               errs() << "Reallocated Size : " << reallocated_size << "\n";
@@ -491,9 +531,12 @@ PreservedAnalyses AddressSanPass::run(Function &F,
       }
     }
   }
-
+  for(auto a = initialSize.begin();a != initialSize.end(); a++){
+      errs()<<a->first<<":"<<*(a->second)<<"\n";
+  }
   //  To delete the unwanted/unused instruction from the IR which is stored in
   //  vector.
+
   for (auto *i : instructions) {
     i->eraseFromParent();
   }

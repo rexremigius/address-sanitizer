@@ -7,8 +7,8 @@ int main() {
   // int x[10];
   // int *x=(int*)calloc(sizeof(x),sizeof(int)) ;
   scanf("%d",&a);
-  double *x = malloc(10 * sizeof(double));
-  float *y = calloc(100, sizeof(float));
+  double *x = malloc(a * sizeof(double));
+  float *y = calloc(a, sizeof(float));
   //int *ptr = malloc(sizeof(int)*a);
   // int b=50;
   // char *x = calloc(10,sizeof(char));
