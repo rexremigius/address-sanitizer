@@ -59,3 +59,4 @@ error.log.*
 add.c
 out
 sample
+*.ll.script

@@ -12,6 +12,8 @@
 ///
 //===----------------------------------------------------------------------===//
 
+// Modified for CFG change by Address Sanitizer Team - McW
+
 #include "llvm/Passes/StandardInstrumentations.h"
 #include "llvm/ADT/Any.h"
 #include "llvm/ADT/Optional.h"
@@ -1108,6 +1110,8 @@ bool PreservedCFGCheckerInstrumentation::CFG::invalidate(
 void PreservedCFGCheckerInstrumentation::registerCallbacks(
     PassInstrumentationCallbacks &PIC, FunctionAnalysisManager &FAM) {
   // Added the condition to facilitate the modification of CFG 
+  // Done by Address-Sanitizer Team - McW
+
   if (VerifyPreservedCFG)
     return;
 

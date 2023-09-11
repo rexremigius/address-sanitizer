@@ -1,3 +1,4 @@
+
 #include <stdio.h>
 #include <stdlib.h>
 //int z[10];
@@ -16,7 +17,9 @@ int main() {
   // x[1][30]=25;
   // memcpy(x,x,sizeof(x));
   scanf("%lf\n", &x[a]);
+ 
   scanf("%fn", &y[150]);
+  
   // x[11]=20.12;
   // x[11]='a';
   // x[6]=12;
@@ -53,6 +56,7 @@ int main() {
 
   return 0;
 }*/
+// Not handled due to variation in IR
 // int main() {
 //   int a;
 //   scanf("%d",&a);

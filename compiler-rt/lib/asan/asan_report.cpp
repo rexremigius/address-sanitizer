@@ -10,6 +10,9 @@
 //
 // This file contains error reporting code.
 //===----------------------------------------------------------------------===//
+
+// Modified for Bypassing Abort condition by Address Sanitizer Team - McW
+
 #include "asan_report.h"
 
 #include "asan_descriptions.h"
@@ -187,6 +190,9 @@ class ScopedInErrorReport {
     if (!halt_on_error_){
       internal_memset(&current_error_, 0, sizeof(current_error_));
     }
+
+    // Done by Address Sanitizer Team - McW
+
     if (halt_on_error_) {
       Report("ABORTING SUPPRESSED AND FLOW CONTINUED\n");
       //Die function is commented to make sure that it does not get aborted.
