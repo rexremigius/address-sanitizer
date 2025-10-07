@@ -200,7 +200,4 @@ This README is to know what the project is all about.
 
         chmod +x run.sh
 
-        ./run.sh
-        
-        
-# MULTICOREWARE CONFIDENTIAL #
+        ./run.sh        
